@@ -8,6 +8,9 @@ mobil_projekt/android/.gradle/
 mobil_projekt/android/local.properties
 mobil_projekt/android/app/debug/
 mobil_projekt/android/app/release/
+mobil_projekt/android/key.properties
+mobil_projekt/android/*.keystore
+mobil_projekt/android/*.jks
 mobil_projekt/ios/Flutter/.last_build_id
 mobil_projekt/ios/Pods/
 mobil_projekt/windows/flutter/ephemeral/
@@ -28,3 +31,13 @@ pc_projekt/progress.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Secrets / API keys
+*.env
+.env*
+secrets.json
+api_keys.json
+credentials.json
+
+# Personal data
+cards.json
