@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>English Learning</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #1a1a2e;
+            color: #eee;
+            min-height: 100vh;
+        }
+
+        h1 {
+            text-align: center;
+            color: #00d9ff;
+            margin-bottom: 10px;
+        }
+
+        .stats {
+            text-align: center;
+            color: #888;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+
+        .card {
+            background: #16213e;
+            border-radius: 16px;
+            padding: 40px 30px;
+            text-align: center;
+            min-height: 200px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            margin-bottom: 20px;
+        }
+
+        .card-text {
+            font-size: 24px;
+            line-height: 1.5;
+            margin-bottom: 20px;
+        }
+
+        .card-translation {
+            font-size: 20px;
+            color: #00d9ff;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #333;
+            display: none;
+        }
+
+        .card-translation.visible {
+            display: block;
+        }
+
+        .category {
+            font-size: 12px;
+            color: #666;
+            margin-top: 15px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: transform 0.1s, background 0.2s;
+        }
+
+        button:hover {
+            transform: scale(1.05);
+        }
+
+        button:active {
+            transform: scale(0.95);
+        }
+
+        .btn-speak {
+            background: #4a4a6a;
+            color: white;
+            font-size: 24px;
+            padding: 12px 20px;
+        }
+
+        .btn-show {
+            background: #00d9ff;
+            color: #1a1a2e;
+            flex: 1;
+            max-width: 200px;
+        }
+
+        .rating-buttons {
+            display: none;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 15px;
+        }
+
+        .rating-buttons.visible {
+            display: flex;
+        }
+
+        .btn-again {
+            background: #e74c3c;
+            color: white;
+        }
+
+        .btn-hard {
+            background: #f39c12;
+            color: white;
+        }
+
+        .btn-good {
+            background: #27ae60;
+            color: white;
+        }
+
+        .btn-easy {
+            background: #3498db;
+            color: white;
+        }
+
+        .direction-toggle {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .direction-toggle button {
+            background: #333;
+            color: #888;
+            padding: 8px 16px;
+            font-size: 14px;
+        }
+
+        .direction-toggle button.active {
+            background: #00d9ff;
+            color: #1a1a2e;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background: #333;
+            border-radius: 3px;
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #00d9ff, #00ff88);
+            transition: width 0.3s;
+        }
+
+        .no-cards {
+            text-align: center;
+            color: #888;
+            padding: 40px;
+        }
+
+        .filter-section {
+            margin-bottom: 20px;
+        }
+
+        .filter-section select {
+            width: 100%;
+            padding: 10px;
+            font-size: 16px;
+            background: #16213e;
+            color: #eee;
+            border: 1px solid #333;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body>
+    <h1>English Learning</h1>
+
+    <div class="stats" id="stats">Načítání...</div>
+
+    <div class="progress-bar">
+        <div class="progress-bar-fill" id="progressBar" style="width: 0%"></div>
+    </div>
+
+    <div class="filter-section">
+        <select id="categoryFilter">
+            <option value="">Všechny kategorie</option>
+        </select>
+    </div>
+
+    <div class="direction-toggle">
+        <button id="btnEnCz" class="active">EN → CZ</button>
+        <button id="btnCzEn">CZ → EN</button>
+    </div>
+
+    <div class="card" id="card">
+        <div class="card-text" id="cardText">Načítání...</div>
+        <div class="card-translation" id="cardTranslation"></div>
+        <div class="category" id="cardCategory"></div>
+    </div>
+
+    <div class="controls">
+        <button class="btn-speak" id="btnSpeak" title="Přehrát výslovnost">🔊</button>
+        <button class="btn-show" id="btnShow">Ukázat překlad</button>
+    </div>
+
+    <div class="rating-buttons" id="ratingButtons">
+        <button class="btn-again" data-rating="1">Znovu</button>
+        <button class="btn-hard" data-rating="2">Těžké</button>
+        <button class="btn-good" data-rating="3">Dobře</button>
+        <button class="btn-easy" data-rating="4">Snadné</button>
+    </div>
+
+    <script>
+        // Stav aplikace
+        let cards = [];
+        let progress = {};
+        let currentCard = null;
+        let direction = 'en-cz'; // nebo 'cz-en'
+        let currentCategory = '';
+        let todayReviewed = 0;
+
+        // Konstanty pro spaced repetition (SM-2 algoritmus)
+        const MIN_EASE = 1.3;
+        const INITIAL_INTERVAL = 1;
+
+        // Načtení dat
+        async function init() {
+            try {
+                // Načíst kartičky
+                const cardsResponse = await fetch('cards.json');
+                if (!cardsResponse.ok) {
+                    throw new Error('Soubor cards.json nenalezen. Spusťte convert_xlsx.py');
+                }
+                const cardsData = await cardsResponse.json();
+                cards = cardsData.cards || [];
+
+                // Načíst pokrok
+                try {
+                    const progressResponse = await fetch('progress.json');
+                    if (progressResponse.ok) {
+                        progress = await progressResponse.json();
+                    }
+                } catch (e) {
+                    progress = { cards: {}, stats: { totalReviews: 0 } };
+                }
+
+                // Naplnit kategorie
+                populateCategories();
+
+                // Zobrazit první kartičku
+                showNextCard();
+                updateStats();
+
+            } catch (error) {
+                document.getElementById('cardText').textContent = error.message;
+                console.error(error);
+            }
+        }
+
+        function populateCategories() {
+            const categories = [...new Set(cards.map(c => c.category))];
+            const select = document.getElementById('categoryFilter');
+            categories.forEach(cat => {
+                const option = document.createElement('option');
+                option.value = cat;
+                option.textContent = cat;
+                select.appendChild(option);
+            });
+        }
+
+        function getFilteredCards() {
+            if (!currentCategory) return cards;
+            return cards.filter(c => c.category === currentCategory);
+        }
+
+        function getCardKey(card) {
+            return card.en.substring(0, 50);
+        }
+
+        function getCardProgress(card) {
+            const key = getCardKey(card);
+            if (!progress.cards) progress.cards = {};
+            if (!progress.cards[key]) {
+                progress.cards[key] = {
+                    ease: 2.5,
+                    interval: 0,
+                    repetitions: 0,
+                    nextReview: new Date().toISOString().split('T')[0],
+                    lastReview: null
+                };
+            }
+            return progress.cards[key];
+        }
+
+        function getDueCards() {
+            const today = new Date().toISOString().split('T')[0];
+            const filtered = getFilteredCards();
+
+            return filtered.filter(card => {
+                const prog = getCardProgress(card);
+                return prog.nextReview <= today;
+            }).sort((a, b) => {
+                const progA = getCardProgress(a);
+                const progB = getCardProgress(b);
+                return progA.nextReview.localeCompare(progB.nextReview);
+            });
+        }
+
+        function showNextCard() {
+            const dueCards = getDueCards();
+
+            if (dueCards.length === 0) {
+                document.getElementById('cardText').textContent = '🎉 Hotovo na dnes!';
+                document.getElementById('cardTranslation').classList.remove('visible');
+                document.getElementById('cardCategory').textContent = '';
+                document.getElementById('btnShow').style.display = 'none';
+                document.getElementById('btnSpeak').style.display = 'none';
+                document.getElementById('ratingButtons').classList.remove('visible');
+                currentCard = null;
+                return;
+            }
+
+            // Vybrat náhodnou kartičku z prvních 10 due
+            const pool = dueCards.slice(0, Math.min(10, dueCards.length));
+            currentCard = pool[Math.floor(Math.random() * pool.length)];
+
+            const questionText = direction === 'en-cz' ? currentCard.en : currentCard.cz;
+            const answerText = direction === 'en-cz' ? currentCard.cz : currentCard.en;
+
+            document.getElementById('cardText').textContent = questionText;
+            document.getElementById('cardTranslation').textContent = answerText;
+            document.getElementById('cardTranslation').classList.remove('visible');
+            document.getElementById('cardCategory').textContent = currentCard.category;
+            document.getElementById('btnShow').style.display = 'block';
+            document.getElementById('btnSpeak').style.display = 'block';
+            document.getElementById('ratingButtons').classList.remove('visible');
+        }
+
+        function showTranslation() {
+            document.getElementById('cardTranslation').classList.add('visible');
+            document.getElementById('btnShow').style.display = 'none';
+            document.getElementById('ratingButtons').classList.add('visible');
+        }
+
+        function speak() {
+            if (!currentCard) return;
+
+            const text = currentCard.en;
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'en-US';
+            utterance.rate = 0.9;
+
+            // Najít anglický hlas
+            const voices = speechSynthesis.getVoices();
+            const englishVoice = voices.find(v => v.lang.startsWith('en'));
+            if (englishVoice) {
+                utterance.voice = englishVoice;
+            }
+
+            speechSynthesis.speak(utterance);
+        }
+
+        function rateCard(rating) {
+            if (!currentCard) return;
+
+            const prog = getCardProgress(currentCard);
+            const today = new Date().toISOString().split('T')[0];
+
+            // SM-2 algoritmus
+            if (rating < 3) {
+                // Špatná odpověď - reset
+                prog.repetitions = 0;
+                prog.interval = INITIAL_INTERVAL;
+            } else {
+                // Dobrá odpověď
+                if (prog.repetitions === 0) {
+                    prog.interval = 1;
+                } else if (prog.repetitions === 1) {
+                    prog.interval = 6;
+                } else {
+                    prog.interval = Math.round(prog.interval * prog.ease);
+                }
+                prog.repetitions++;
+            }
+
+            // Upravit ease factor
+            prog.ease = Math.max(MIN_EASE, prog.ease + (0.1 - (5 - rating) * (0.08 + (5 - rating) * 0.02)));
+
+            // Nastavit další opakování
+            const nextDate = new Date();
+            nextDate.setDate(nextDate.getDate() + prog.interval);
+            prog.nextReview = nextDate.toISOString().split('T')[0];
+            prog.lastReview = today;
+
+            // Statistiky
+            if (!progress.stats) progress.stats = { totalReviews: 0 };
+            progress.stats.totalReviews++;
+            todayReviewed++;
+
+            // Uložit do localStorage (pro zachování mezi sezeními)
+            saveProgress();
+
+            // Další kartička
+            showNextCard();
+            updateStats();
+        }
+
+        async function saveProgress() {
+            try {
+                await fetch('/save-progress', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(progress, null, 2)
+                });
+            } catch (e) {
+                console.error('Nepodařilo se uložit pokrok:', e);
+            }
+        }
+
+        function loadProgress() {
+            // Pokrok se načítá v init() z progress.json
+        }
+
+        function updateStats() {
+            const dueCards = getDueCards();
+            const filtered = getFilteredCards();
+            const learned = filtered.filter(c => getCardProgress(c).repetitions > 0).length;
+
+            document.getElementById('stats').textContent =
+                `K opakování: ${dueCards.length} | Naučeno: ${learned}/${filtered.length} | Dnes: ${todayReviewed}`;
+
+            const progressPercent = filtered.length > 0 ? (learned / filtered.length) * 100 : 0;
+            document.getElementById('progressBar').style.width = `${progressPercent}%`;
+        }
+
+        // Event listeners
+        document.getElementById('btnShow').addEventListener('click', showTranslation);
+        document.getElementById('btnSpeak').addEventListener('click', speak);
+
+        document.getElementById('ratingButtons').addEventListener('click', (e) => {
+            if (e.target.dataset.rating) {
+                rateCard(parseInt(e.target.dataset.rating));
+            }
+        });
+
+        document.getElementById('btnEnCz').addEventListener('click', () => {
+            direction = 'en-cz';
+            document.getElementById('btnEnCz').classList.add('active');
+            document.getElementById('btnCzEn').classList.remove('active');
+            showNextCard();
+        });
+
+        document.getElementById('btnCzEn').addEventListener('click', () => {
+            direction = 'cz-en';
+            document.getElementById('btnCzEn').classList.add('active');
+            document.getElementById('btnEnCz').classList.remove('active');
+            showNextCard();
+        });
+
+        document.getElementById('categoryFilter').addEventListener('change', (e) => {
+            currentCategory = e.target.value;
+            showNextCard();
+            updateStats();
+        });
+
+        // Klávesové zkratky
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                if (document.getElementById('ratingButtons').classList.contains('visible')) {
+                    rateCard(3); // Dobře
+                } else {
+                    showTranslation();
+                }
+            } else if (e.code === 'KeyS') {
+                speak();
+            } else if (e.code === 'Digit1') rateCard(1);
+            else if (e.code === 'Digit2') rateCard(2);
+            else if (e.code === 'Digit3') rateCard(3);
+            else if (e.code === 'Digit4') rateCard(4);
+        });
+
+        // Načíst hlasy
+        speechSynthesis.onvoiceschanged = () => {
+            speechSynthesis.getVoices();
+        };
+
+        // Načíst uložený pokrok a spustit
+        loadProgress();
+        init();
+    </script>
+</body>
+</html>

@@ -1,0 +1,30 @@
+# Flutter/Dart
+mobil_projekt/.dart_tool/
+mobil_projekt/.packages
+mobil_projekt/build/
+mobil_projekt/.flutter-plugins
+mobil_projekt/.flutter-plugins-dependencies
+mobil_projekt/android/.gradle/
+mobil_projekt/android/local.properties
+mobil_projekt/android/app/debug/
+mobil_projekt/android/app/release/
+mobil_projekt/ios/Flutter/.last_build_id
+mobil_projekt/ios/Pods/
+mobil_projekt/windows/flutter/ephemeral/
+*.iml
+*.log
+
+# Python
+__pycache__/
+*.pyc
+pc_projekt/progress.json
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
