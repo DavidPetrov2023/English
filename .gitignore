@@ -41,4 +41,5 @@ credentials.json
 
 # Personal data
 cards.json
+*.csv
 nul

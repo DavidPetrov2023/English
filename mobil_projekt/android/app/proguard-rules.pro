@@ -8,3 +8,8 @@
 
 # Keep TTS plugin
 -keep class com.tundralabs.fluttertts.** { *; }
+
+# Play Core (missing classes - dontwarn)
+-dontwarn com.google.android.play.core.splitcompat.SplitCompatApplication
+-dontwarn com.google.android.play.core.splitinstall.**
+-dontwarn com.google.android.play.core.tasks.**
