@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 void main() {
   runApp(const EnglishLearningApp());
@@ -27,11 +28,12 @@ class EnglishLearningApp extends StatelessWidget {
           surface: Color(0xFF16213E),
         ),
       ),
-      home: const LearningScreen(),
+      home: const HomeScreen(),
     );
   }
 }
 
+// Data models
 class FlashCard {
   final String en;
   final String cz;
@@ -46,6 +48,8 @@ class FlashCard {
       category: json['category'] ?? '',
     );
   }
+
+  Map<String, dynamic> toJson() => {'en': en, 'cz': cz, 'category': category};
 }
 
 class CardProgress {
@@ -86,71 +90,82 @@ class CardProgress {
   }
 }
 
-class LearningScreen extends StatefulWidget {
-  const LearningScreen({super.key});
+class GrammarLevel {
+  final String level;
+  final String name;
+  final Color color;
+  final List<GrammarCategory> categories;
 
-  @override
-  State<LearningScreen> createState() => _LearningScreenState();
+  GrammarLevel({
+    required this.level,
+    required this.name,
+    required this.color,
+    required this.categories,
+  });
+
+  factory GrammarLevel.fromJson(Map<String, dynamic> json) {
+    return GrammarLevel(
+      level: json['level'] ?? '',
+      name: json['name'] ?? '',
+      color: Color(int.parse((json['color'] ?? '#9E9E9E').replaceFirst('#', '0xFF'))),
+      categories: (json['categories'] as List? ?? [])
+          .map((c) => GrammarCategory.fromJson(c))
+          .toList(),
+    );
+  }
 }
 
-class _LearningScreenState extends State<LearningScreen> {
-  List<FlashCard> cards = [];
-  Map<String, CardProgress> progress = {};
-  FlashCard? currentCard;
-  bool showTranslation = false;
-  bool isEnToCz = true;
-  int todayReviewed = 0;
+class GrammarCategory {
+  final String id;
+  final String name;
+  final List<FlashCard> cards;
 
-  late FlutterTts flutterTts;
+  GrammarCategory({
+    required this.id,
+    required this.name,
+    required this.cards,
+  });
+
+  factory GrammarCategory.fromJson(Map<String, dynamic> json) {
+    return GrammarCategory(
+      id: json['id'] ?? '',
+      name: json['name'] ?? '',
+      cards: (json['cards'] as List? ?? [])
+          .map((c) => FlashCard.fromJson({...c, 'category': json['name']}))
+          .toList(),
+    );
+  }
+}
+
+// Home Screen
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  List<FlashCard> myCards = [];
+  List<GrammarLevel> grammarLevels = [];
+  Map<String, CardProgress> progress = {};
+  String? userEmail;
   late SharedPreferences prefs;
+  bool isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    flutterTts = FlutterTts();
-    _initTts();
-    _loadData();
+    _loadAllData();
   }
 
-  Future<void> _initTts() async {
-    await flutterTts.setLanguage('en-US');
-    await flutterTts.setSpeechRate(0.4);
-    await flutterTts.setPitch(1.0);
-    await flutterTts.awaitSpeakCompletion(true);
-
-    // Zkusit najít lepší hlas
-    List<dynamic> voices = await flutterTts.getVoices;
-    var englishVoices = voices.where((v) =>
-      v['locale'].toString().startsWith('en') &&
-      v['name'].toString().toLowerCase().contains('female') ||
-      v['name'].toString().toLowerCase().contains('samantha') ||
-      v['name'].toString().toLowerCase().contains('google') ||
-      v['name'].toString().contains('en-us-x-sfg')
-    ).toList();
-
-    if (englishVoices.isNotEmpty) {
-      await flutterTts.setVoice({
-        "name": englishVoices.first['name'],
-        "locale": englishVoices.first['locale']
-      });
-    }
-  }
-
-  Future<void> _loadData() async {
+  Future<void> _loadAllData() async {
     prefs = await SharedPreferences.getInstance();
 
-    // Načíst kartičky z assets
-    final String jsonString = await rootBundle.loadString('assets/cards.json');
-    final Map<String, dynamic> jsonData = json.decode(jsonString);
-    final List<dynamic> cardsList = jsonData['cards'] ?? [];
+    // Load user email
+    userEmail = prefs.getString('userEmail');
 
-    // Filtrovat jen "Gramatika věty"
-    cards = cardsList
-        .map((c) => FlashCard.fromJson(c))
-        .where((c) => c.category == 'Gramatika věty')
-        .toList();
-
-    // Načíst pokrok
+    // Load progress
     final String? progressJson = prefs.getString('progress');
     if (progressJson != null) {
       final Map<String, dynamic> progressData = json.decode(progressJson);
@@ -159,7 +174,42 @@ class _LearningScreenState extends State<LearningScreen> {
       });
     }
 
-    _showNextCard();
+    // Load my cards (David's cards)
+    try {
+      final String jsonString = await rootBundle.loadString('assets/cards.json');
+      final Map<String, dynamic> jsonData = json.decode(jsonString);
+      final List<dynamic> cardsList = jsonData['cards'] ?? [];
+      myCards = cardsList
+          .map((c) => FlashCard.fromJson(c))
+          .where((c) => c.category == 'Gramatika věty')
+          .toList();
+    } catch (e) {
+      myCards = [];
+    }
+
+    // Load grammar levels
+    final levels = ['A1', 'A2', 'B1', 'B2', 'C1'];
+    for (final level in levels) {
+      try {
+        final String jsonString = await rootBundle.loadString('assets/grammar_$level.json');
+        final Map<String, dynamic> jsonData = json.decode(jsonString);
+        grammarLevels.add(GrammarLevel.fromJson(jsonData));
+      } catch (e) {
+        // Level file not found
+      }
+    }
+
+    setState(() {
+      isLoading = false;
+    });
+  }
+
+  Future<void> _saveProgress() async {
+    final Map<String, dynamic> progressJson = {};
+    progress.forEach((key, value) {
+      progressJson[key] = value.toJson();
+    });
+    await prefs.setString('progress', json.encode(progressJson));
   }
 
   String _getCardKey(FlashCard card) {
@@ -172,9 +222,647 @@ class _LearningScreenState extends State<LearningScreen> {
     return progress[key]!;
   }
 
+  double _calculateProgress(List<FlashCard> cards) {
+    if (cards.isEmpty) return 0.0;
+    final learned = cards.where((c) => _getCardProgress(c).repetitions > 0).length;
+    return learned / cards.length;
+  }
+
+  double _calculateCategoryProgress(GrammarCategory category) {
+    return _calculateProgress(category.cards);
+  }
+
+  double _calculateLevelProgress(GrammarLevel level) {
+    final allCards = level.categories.expand((c) => c.cards).toList();
+    return _calculateProgress(allCards);
+  }
+
+  Future<void> _backupToEmail() async {
+    // Ask for email if not set
+    if (userEmail == null || userEmail!.isEmpty) {
+      final controller = TextEditingController();
+      final email = await showDialog<String>(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: const Color(0xFF16213E),
+          title: const Text('Zadejte email pro zálohu'),
+          content: TextField(
+            controller: controller,
+            keyboardType: TextInputType.emailAddress,
+            decoration: const InputDecoration(
+              hintText: 'vas@email.cz',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Zrušit'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, controller.text),
+              child: const Text('Uložit'),
+            ),
+          ],
+        ),
+      );
+      if (email != null && email.isNotEmpty) {
+        userEmail = email;
+        await prefs.setString('userEmail', email);
+      } else {
+        return;
+      }
+    }
+
+    // Create backup data
+    final backupData = {
+      'version': '2.0',
+      'date': DateTime.now().toIso8601String(),
+      'progress': progress.map((k, v) => MapEntry(k, v.toJson())),
+      'myCards': myCards.map((c) => c.toJson()).toList(),
+    };
+
+    final backupJson = json.encode(backupData);
+    final subject = 'English Learning - Záloha ${DateTime.now().toString().split(' ')[0]}';
+    final body = 'Záloha vašeho pokroku v aplikaci English Learning.\n\n'
+        'Pro obnovení zkopírujte následující text do pole "Obnovit ze zálohy":\n\n'
+        '$backupJson';
+
+    final uri = Uri(
+      scheme: 'mailto',
+      path: userEmail,
+      query: 'subject=${Uri.encodeComponent(subject)}&body=${Uri.encodeComponent(body)}',
+    );
+
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Email s zálohou byl připraven')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Nepodařilo se otevřít email')),
+      );
+    }
+  }
+
+  Future<void> _restoreFromBackup() async {
+    final controller = TextEditingController();
+    final backupText = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF16213E),
+        title: const Text('Obnovit ze zálohy'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: TextField(
+            controller: controller,
+            maxLines: 5,
+            decoration: const InputDecoration(
+              hintText: 'Vložte text zálohy zde...',
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Zrušit'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            child: const Text('Obnovit'),
+          ),
+        ],
+      ),
+    );
+
+    if (backupText != null && backupText.isNotEmpty) {
+      try {
+        final data = json.decode(backupText);
+        if (data['progress'] != null) {
+          progress.clear();
+          (data['progress'] as Map<String, dynamic>).forEach((key, value) {
+            progress[key] = CardProgress.fromJson(value);
+          });
+          await _saveProgress();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Záloha byla úspěšně obnovena')),
+          );
+          setState(() {});
+        }
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Neplatný formát zálohy')),
+        );
+      }
+    }
+  }
+
+  void _showSettings() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF16213E),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.backup, color: Color(0xFF00D9FF)),
+              title: const Text('Zálohovat na email'),
+              subtitle: Text(userEmail ?? 'Email není nastaven'),
+              onTap: () {
+                Navigator.pop(context);
+                _backupToEmail();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.restore, color: Color(0xFF00FF88)),
+              title: const Text('Obnovit ze zálohy'),
+              onTap: () {
+                Navigator.pop(context);
+                _restoreFromBackup();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.email, color: Colors.orange),
+              title: const Text('Změnit email'),
+              onTap: () async {
+                Navigator.pop(context);
+                final controller = TextEditingController(text: userEmail);
+                final email = await showDialog<String>(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    backgroundColor: const Color(0xFF16213E),
+                    title: const Text('Změnit email'),
+                    content: TextField(
+                      controller: controller,
+                      keyboardType: TextInputType.emailAddress,
+                      decoration: const InputDecoration(
+                        hintText: 'vas@email.cz',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('Zrušit'),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, controller.text),
+                        child: const Text('Uložit'),
+                      ),
+                    ],
+                  ),
+                );
+                if (email != null && email.isNotEmpty) {
+                  userEmail = email;
+                  await prefs.setString('userEmail', email);
+                  setState(() {});
+                }
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.info_outline, color: Colors.grey),
+              title: const Text('O aplikaci'),
+              onTap: () {
+                Navigator.pop(context);
+                _showAboutDialog();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showAboutDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF16213E),
+        title: const Text('O aplikaci'),
+        content: const Text(
+          'English Learning v2.0\n\n'
+          'Aplikace pro učení angličtiny pomocí kartiček.\n\n'
+          'Funkce:\n'
+          '• Vlastní kartičky\n'
+          '• Gramatika A1-C1\n'
+          '• SM-2 algoritmus (spaced repetition)\n'
+          '• Text-to-Speech výslovnost\n'
+          '• Záloha na email\n\n'
+          'Autor: David Petrov',
+          style: TextStyle(height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Zavřít'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (isLoading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    final myCardsProgress = _calculateProgress(myCards);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('English Learning'),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: _showSettings,
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // My Cards Section
+              _buildSectionCard(
+                title: '📚 Moje kartičky',
+                subtitle: '${myCards.length} kartiček',
+                progress: myCardsProgress,
+                color: const Color(0xFF00D9FF),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => LearningScreen(
+                      title: 'Moje kartičky',
+                      cards: myCards,
+                      progress: progress,
+                      onSaveProgress: _saveProgress,
+                    ),
+                  ),
+                ).then((_) => setState(() {})),
+              ),
+
+              const SizedBox(height: 24),
+
+              // Grammar Section Header
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 4),
+                child: Text(
+                  '📖 Gramatika',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // Grammar Levels
+              ...grammarLevels.map((level) => _buildLevelCard(level)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionCard({
+    required String title,
+    required String subtitle,
+    required double progress,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: const Color(0xFF16213E),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: color.withOpacity(0.3), width: 1),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                Icon(Icons.arrow_forward_ios, color: color, size: 16),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(subtitle, style: TextStyle(color: Colors.grey[500])),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: progress,
+                      backgroundColor: Colors.grey[800],
+                      valueColor: AlwaysStoppedAnimation<Color>(color),
+                      minHeight: 8,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  '${(progress * 100).toInt()}%',
+                  style: TextStyle(color: color, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLevelCard(GrammarLevel level) {
+    final levelProgress = _calculateLevelProgress(level);
+    final totalCards = level.categories.fold<int>(0, (sum, c) => sum + c.cards.length);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: GestureDetector(
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => GrammarLevelScreen(
+              level: level,
+              progress: progress,
+              onSaveProgress: _saveProgress,
+              getCardProgress: _getCardProgress,
+            ),
+          ),
+        ).then((_) => setState(() {})),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFF16213E),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: level.color.withOpacity(0.3), width: 1),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 50,
+                height: 50,
+                decoration: BoxDecoration(
+                  color: level.color.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Center(
+                  child: Text(
+                    level.level,
+                    style: TextStyle(
+                      color: level.color,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      level.name,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    Text(
+                      '${level.categories.length} kategorií • $totalCards kartiček',
+                      style: TextStyle(color: Colors.grey[500], fontSize: 12),
+                    ),
+                    const SizedBox(height: 8),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: levelProgress,
+                        backgroundColor: Colors.grey[800],
+                        valueColor: AlwaysStoppedAnimation<Color>(level.color),
+                        minHeight: 6,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                '${(levelProgress * 100).toInt()}%',
+                style: TextStyle(
+                  color: level.color,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(Icons.arrow_forward_ios, color: level.color, size: 16),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// Grammar Level Screen
+class GrammarLevelScreen extends StatelessWidget {
+  final GrammarLevel level;
+  final Map<String, CardProgress> progress;
+  final Function() onSaveProgress;
+  final CardProgress Function(FlashCard) getCardProgress;
+
+  const GrammarLevelScreen({
+    super.key,
+    required this.level,
+    required this.progress,
+    required this.onSaveProgress,
+    required this.getCardProgress,
+  });
+
+  double _calculateCategoryProgress(GrammarCategory category) {
+    if (category.cards.isEmpty) return 0.0;
+    final learned = category.cards.where((c) => getCardProgress(c).repetitions > 0).length;
+    return learned / category.cards.length;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('${level.level} - ${level.name}'),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+      ),
+      body: ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: level.categories.length,
+        itemBuilder: (context, index) {
+          final category = level.categories[index];
+          final categoryProgress = _calculateCategoryProgress(category);
+
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: GestureDetector(
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => LearningScreen(
+                    title: category.name,
+                    cards: category.cards,
+                    progress: progress,
+                    onSaveProgress: onSaveProgress,
+                  ),
+                ),
+              ),
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF16213E),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            category.name,
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          Text(
+                            '${category.cards.length} kartiček',
+                            style: TextStyle(color: Colors.grey[500], fontSize: 12),
+                          ),
+                          const SizedBox(height: 8),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(4),
+                            child: LinearProgressIndicator(
+                              value: categoryProgress,
+                              backgroundColor: Colors.grey[800],
+                              valueColor: AlwaysStoppedAnimation<Color>(level.color),
+                              minHeight: 6,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      '${(categoryProgress * 100).toInt()}%',
+                      style: TextStyle(
+                        color: level.color,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Icon(Icons.play_arrow, color: level.color),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+// Learning Screen (Flashcards)
+class LearningScreen extends StatefulWidget {
+  final String title;
+  final List<FlashCard> cards;
+  final Map<String, CardProgress> progress;
+  final Function() onSaveProgress;
+
+  const LearningScreen({
+    super.key,
+    required this.title,
+    required this.cards,
+    required this.progress,
+    required this.onSaveProgress,
+  });
+
+  @override
+  State<LearningScreen> createState() => _LearningScreenState();
+}
+
+class _LearningScreenState extends State<LearningScreen> {
+  FlashCard? currentCard;
+  bool showTranslation = false;
+  bool isEnToCz = true;
+  int todayReviewed = 0;
+
+  late FlutterTts flutterTts;
+
+  @override
+  void initState() {
+    super.initState();
+    flutterTts = FlutterTts();
+    _initTts();
+    _showNextCard();
+  }
+
+  Future<void> _initTts() async {
+    await flutterTts.setLanguage('en-US');
+    await flutterTts.setSpeechRate(0.4);
+    await flutterTts.setPitch(1.0);
+    await flutterTts.awaitSpeakCompletion(true);
+
+    List<dynamic> voices = await flutterTts.getVoices;
+    var englishVoices = voices.where((v) =>
+      v['locale'].toString().startsWith('en') &&
+      (v['name'].toString().toLowerCase().contains('female') ||
+      v['name'].toString().toLowerCase().contains('samantha') ||
+      v['name'].toString().toLowerCase().contains('google') ||
+      v['name'].toString().contains('en-us-x-sfg'))
+    ).toList();
+
+    if (englishVoices.isNotEmpty) {
+      await flutterTts.setVoice({
+        "name": englishVoices.first['name'],
+        "locale": englishVoices.first['locale']
+      });
+    }
+  }
+
+  String _getCardKey(FlashCard card) {
+    return card.en.substring(0, min(50, card.en.length));
+  }
+
+  CardProgress _getCardProgress(FlashCard card) {
+    final key = _getCardKey(card);
+    widget.progress[key] ??= CardProgress();
+    return widget.progress[key]!;
+  }
+
   List<FlashCard> _getDueCards() {
     final today = DateTime.now().toIso8601String().split('T')[0];
-    return cards.where((card) {
+    return widget.cards.where((card) {
       final prog = _getCardProgress(card);
       return prog.nextReview.compareTo(today) <= 0;
     }).toList()
@@ -196,7 +884,6 @@ class _LearningScreenState extends State<LearningScreen> {
       return;
     }
 
-    // Vybrat náhodnou kartičku z prvních 10
     final pool = dueCards.take(10).toList();
     final random = Random();
 
@@ -224,7 +911,7 @@ class _LearningScreenState extends State<LearningScreen> {
     final prog = _getCardProgress(currentCard!);
     final today = DateTime.now().toIso8601String().split('T')[0];
 
-    // SM-2 algoritmus
+    // SM-2 algorithm
     if (rating < 3) {
       prog.repetitions = 0;
       prog.interval = 1;
@@ -239,26 +926,16 @@ class _LearningScreenState extends State<LearningScreen> {
       prog.repetitions++;
     }
 
-    // Upravit ease factor
     prog.ease = max(1.3, prog.ease + (0.1 - (5 - rating) * (0.08 + (5 - rating) * 0.02)));
 
-    // Nastavit další opakování
     final nextDate = DateTime.now().add(Duration(days: prog.interval));
     prog.nextReview = nextDate.toIso8601String().split('T')[0];
     prog.lastReview = today;
 
     todayReviewed++;
 
-    _saveProgress();
+    widget.onSaveProgress();
     _showNextCard();
-  }
-
-  Future<void> _saveProgress() async {
-    final Map<String, dynamic> progressJson = {};
-    progress.forEach((key, value) {
-      progressJson[key] = value.toJson();
-    });
-    await prefs.setString('progress', json.encode(progressJson));
   }
 
   void _toggleDirection() {
@@ -267,150 +944,31 @@ class _LearningScreenState extends State<LearningScreen> {
     });
   }
 
-  void _showAboutDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF16213E),
-        title: const Text('O aplikaci'),
-        content: const Text(
-          'English Learning\n\n'
-          'Aplikace pro učení angličtiny pomocí kartiček.\n\n'
-          'Používá SM-2 algoritmus (spaced repetition) - kartičky které neznáte se opakují častěji.\n\n'
-          'Autor: David Petrov\n'
-          'Verze 1.0',
-          style: TextStyle(height: 1.5),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Zavřít'),
-          ),
-        ],
-      ),
-    );
-  }
-
   Color _getCardColor(FlashCard card) {
     final prog = _getCardProgress(card);
     if (prog.repetitions == 0) {
-      return Colors.grey[700]!; // Nová - šedá
+      return Colors.grey[700]!;
     } else if (prog.interval <= 1) {
-      return const Color(0xFFE74C3C); // Těžká - červená
+      return const Color(0xFFE74C3C);
     } else if (prog.interval <= 6) {
-      return const Color(0xFFF39C12); // Učí se - oranžová
+      return const Color(0xFFF39C12);
     } else if (prog.interval <= 21) {
-      return const Color(0xFF27AE60); // Dobrá - zelená
+      return const Color(0xFF27AE60);
     } else {
-      return const Color(0xFF3498DB); // Naučená - modrá
+      return const Color(0xFF3498DB);
     }
   }
 
-  void _showCardsOverview(BuildContext context) {
+  void _showCardsOverview() {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => Scaffold(
-          backgroundColor: const Color(0xFF1A1A2E),
-          appBar: AppBar(
-            title: const Text('Přehled kartiček'),
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-          ),
-          body: Column(
-            children: [
-              // Legenda
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    _buildLegendItem(Colors.grey[700]!, 'Nová'),
-                    _buildLegendItem(const Color(0xFFE74C3C), 'Těžká'),
-                    _buildLegendItem(const Color(0xFFF39C12), 'Učí se'),
-                    _buildLegendItem(const Color(0xFF27AE60), 'Dobrá'),
-                    _buildLegendItem(const Color(0xFF3498DB), 'Naučená'),
-                  ],
-                ),
-              ),
-              // Mřížka kartiček
-              Expanded(
-                child: GridView.builder(
-                  padding: const EdgeInsets.all(8),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 8,
-                    crossAxisSpacing: 4,
-                    mainAxisSpacing: 4,
-                  ),
-                  itemCount: cards.length,
-                  itemBuilder: (context, index) {
-                    final card = cards[index];
-                    return GestureDetector(
-                      onTap: () => _showCardDetail(context, card),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: _getCardColor(card),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
+        builder: (context) => CardsOverviewScreen(
+          cards: widget.cards,
+          getCardColor: _getCardColor,
+          getCardProgress: _getCardProgress,
+          flutterTts: flutterTts,
         ),
-      ),
-    );
-  }
-
-  Widget _buildLegendItem(Color color, String label) {
-    return Row(
-      children: [
-        Container(
-          width: 12,
-          height: 12,
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(2),
-          ),
-        ),
-        const SizedBox(width: 4),
-        Text(label, style: const TextStyle(fontSize: 10)),
-      ],
-    );
-  }
-
-  void _showCardDetail(BuildContext context, FlashCard card) {
-    final prog = _getCardProgress(card);
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF16213E),
-        title: Text(card.en, style: const TextStyle(fontSize: 16)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(card.cz, style: const TextStyle(color: Color(0xFF00D9FF))),
-            const SizedBox(height: 16),
-            Text('Opakování: ${prog.repetitions}x', style: TextStyle(color: Colors.grey[400], fontSize: 12)),
-            Text('Interval: ${prog.interval} dní', style: TextStyle(color: Colors.grey[400], fontSize: 12)),
-            Text('Další: ${prog.nextReview}', style: TextStyle(color: Colors.grey[400], fontSize: 12)),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              flutterTts.speak(card.en);
-            },
-            child: const Text('🔊 Přehrát'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Zavřít'),
-          ),
-        ],
       ),
     );
   }
@@ -418,23 +976,18 @@ class _LearningScreenState extends State<LearningScreen> {
   @override
   Widget build(BuildContext context) {
     final dueCards = _getDueCards();
-    final learned = cards.where((c) => _getCardProgress(c).repetitions > 0).length;
-    final progressPercent = cards.isNotEmpty ? learned / cards.length : 0.0;
+    final learned = widget.cards.where((c) => _getCardProgress(c).repetitions > 0).length;
+    final progressPercent = widget.cards.isNotEmpty ? learned / widget.cards.length : 0.0;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('English Learning'),
+        title: Text(widget.title),
         backgroundColor: Colors.transparent,
         elevation: 0,
-        centerTitle: true,
         actions: [
           IconButton(
             icon: const Icon(Icons.grid_view),
-            onPressed: () => _showCardsOverview(context),
-          ),
-          IconButton(
-            icon: const Icon(Icons.info_outline),
-            onPressed: () => _showAboutDialog(context),
+            onPressed: _showCardsOverview,
           ),
         ],
       ),
@@ -443,14 +996,12 @@ class _LearningScreenState extends State<LearningScreen> {
           padding: const EdgeInsets.all(20),
           child: Column(
             children: [
-              // Statistiky
               Text(
-                'K opakování: ${dueCards.length} | Naučeno: $learned/${cards.length} | Dnes: $todayReviewed',
+                'K opakování: ${dueCards.length} | Naučeno: $learned/${widget.cards.length} | Dnes: $todayReviewed',
                 style: TextStyle(color: Colors.grey[500], fontSize: 14),
               ),
               const SizedBox(height: 10),
 
-              // Progress bar
               ClipRRect(
                 borderRadius: BorderRadius.circular(3),
                 child: LinearProgressIndicator(
@@ -462,7 +1013,6 @@ class _LearningScreenState extends State<LearningScreen> {
               ),
               const SizedBox(height: 20),
 
-              // Směr překladu
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -473,13 +1023,9 @@ class _LearningScreenState extends State<LearningScreen> {
               ),
               const SizedBox(height: 20),
 
-              // Kartička
-              Expanded(
-                child: _buildCard(),
-              ),
+              Expanded(child: _buildCard()),
               const SizedBox(height: 20),
 
-              // Tlačítka
               if (currentCard != null) ...[
                 if (!showTranslation) ...[
                   Row(
@@ -645,6 +1191,123 @@ class _LearningScreenState extends State<LearningScreen> {
         ),
       ),
       child: Text(text),
+    );
+  }
+}
+
+// Cards Overview Screen
+class CardsOverviewScreen extends StatelessWidget {
+  final List<FlashCard> cards;
+  final Color Function(FlashCard) getCardColor;
+  final CardProgress Function(FlashCard) getCardProgress;
+  final FlutterTts flutterTts;
+
+  const CardsOverviewScreen({
+    super.key,
+    required this.cards,
+    required this.getCardColor,
+    required this.getCardProgress,
+    required this.flutterTts,
+  });
+
+  void _showCardDetail(BuildContext context, FlashCard card) {
+    final prog = getCardProgress(card);
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF16213E),
+        title: Text(card.en, style: const TextStyle(fontSize: 16)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(card.cz, style: const TextStyle(color: Color(0xFF00D9FF))),
+            const SizedBox(height: 16),
+            Text('Opakování: ${prog.repetitions}x', style: TextStyle(color: Colors.grey[400], fontSize: 12)),
+            Text('Interval: ${prog.interval} dní', style: TextStyle(color: Colors.grey[400], fontSize: 12)),
+            Text('Další: ${prog.nextReview}', style: TextStyle(color: Colors.grey[400], fontSize: 12)),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => flutterTts.speak(card.en),
+            child: const Text('🔊 Přehrát'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Zavřít'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLegendItem(Color color, String label) {
+    return Row(
+      children: [
+        Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+        const SizedBox(width: 4),
+        Text(label, style: const TextStyle(fontSize: 10)),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF1A1A2E),
+      appBar: AppBar(
+        title: const Text('Přehled kartiček'),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+      ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _buildLegendItem(Colors.grey[700]!, 'Nová'),
+                _buildLegendItem(const Color(0xFFE74C3C), 'Těžká'),
+                _buildLegendItem(const Color(0xFFF39C12), 'Učí se'),
+                _buildLegendItem(const Color(0xFF27AE60), 'Dobrá'),
+                _buildLegendItem(const Color(0xFF3498DB), 'Naučená'),
+              ],
+            ),
+          ),
+          Expanded(
+            child: GridView.builder(
+              padding: const EdgeInsets.all(8),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 8,
+                crossAxisSpacing: 4,
+                mainAxisSpacing: 4,
+              ),
+              itemCount: cards.length,
+              itemBuilder: (context, index) {
+                final card = cards[index];
+                return GestureDetector(
+                  onTap: () => _showCardDetail(context, card),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: getCardColor(card),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
