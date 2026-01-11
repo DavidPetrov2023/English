@@ -147,9 +147,11 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   List<FlashCard> myCards = [];
+  List<FlashCard> davidCards = [];
   List<GrammarLevel> grammarLevels = [];
   Map<String, CardProgress> progress = {};
   String? userEmail;
+  String myCardsName = 'Moje kartičky';
   late SharedPreferences prefs;
   bool isLoading = true;
 
@@ -162,8 +164,9 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadAllData() async {
     prefs = await SharedPreferences.getInstance();
 
-    // Load user email
+    // Load user email and custom name
     userEmail = prefs.getString('userEmail');
+    myCardsName = prefs.getString('myCardsName') ?? 'Moje kartičky';
 
     // Load progress
     final String? progressJson = prefs.getString('progress');
@@ -174,16 +177,25 @@ class _HomeScreenState extends State<HomeScreen> {
       });
     }
 
-    // Load my cards (David's cards)
+    // Load David's cards (author's cards)
     try {
       final String jsonString = await rootBundle.loadString('assets/cards.json');
       final Map<String, dynamic> jsonData = json.decode(jsonString);
       final List<dynamic> cardsList = jsonData['cards'] ?? [];
-      myCards = cardsList
+      davidCards = cardsList
           .map((c) => FlashCard.fromJson(c))
           .where((c) => c.category == 'Gramatika věty')
           .toList();
     } catch (e) {
+      davidCards = [];
+    }
+
+    // Load user's own cards
+    final String? myCardsJson = prefs.getString('myCards');
+    if (myCardsJson != null) {
+      final List<dynamic> cardsList = json.decode(myCardsJson);
+      myCards = cardsList.map((c) => FlashCard.fromJson(c)).toList();
+    } else {
       myCards = [];
     }
 
@@ -371,6 +383,19 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // Coming soon - Google Drive backup
+            ListTile(
+              leading: const Icon(Icons.cloud_outlined, color: Colors.grey),
+              title: const Text('Google Drive záloha'),
+              subtitle: const Text('Připravujeme - bude v další verzi'),
+              onTap: () {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Automatická záloha na Google Drive bude dostupná v příští aktualizaci')),
+                );
+              },
+            ),
+            const Divider(color: Colors.grey),
             ListTile(
               leading: const Icon(Icons.backup, color: Color(0xFF00D9FF)),
               title: const Text('Zálohovat na email'),
@@ -382,48 +407,10 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             ListTile(
               leading: const Icon(Icons.restore, color: Color(0xFF00FF88)),
-              title: const Text('Obnovit ze zálohy'),
+              title: const Text('Obnovit ze zálohy (text)'),
               onTap: () {
                 Navigator.pop(context);
                 _restoreFromBackup();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.email, color: Colors.orange),
-              title: const Text('Změnit email'),
-              onTap: () async {
-                Navigator.pop(context);
-                final controller = TextEditingController(text: userEmail);
-                final email = await showDialog<String>(
-                  context: context,
-                  builder: (context) => AlertDialog(
-                    backgroundColor: const Color(0xFF16213E),
-                    title: const Text('Změnit email'),
-                    content: TextField(
-                      controller: controller,
-                      keyboardType: TextInputType.emailAddress,
-                      decoration: const InputDecoration(
-                        hintText: 'vas@email.cz',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(context),
-                        child: const Text('Zrušit'),
-                      ),
-                      TextButton(
-                        onPressed: () => Navigator.pop(context, controller.text),
-                        child: const Text('Uložit'),
-                      ),
-                    ],
-                  ),
-                );
-                if (email != null && email.isNotEmpty) {
-                  userEmail = email;
-                  await prefs.setString('userEmail', email);
-                  setState(() {});
-                }
               },
             ),
             ListTile(
@@ -468,6 +455,16 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildBackupStatusIndicator() {
+    return const Tooltip(
+      message: 'Záloha na Google Drive - připravujeme',
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: 8),
+        child: Icon(Icons.cloud_outlined, color: Colors.grey, size: 20),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (isLoading) {
@@ -477,6 +474,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     final myCardsProgress = _calculateProgress(myCards);
+    final davidCardsProgress = _calculateProgress(davidCards);
 
     return Scaffold(
       appBar: AppBar(
@@ -485,6 +483,8 @@ class _HomeScreenState extends State<HomeScreen> {
         elevation: 0,
         centerTitle: true,
         actions: [
+          // Backup status indicator
+          _buildBackupStatusIndicator(),
           IconButton(
             icon: const Icon(Icons.settings),
             onPressed: _showSettings,
@@ -497,9 +497,9 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // My Cards Section
-              _buildSectionCard(
-                title: '📚 Moje kartičky',
+              // My Cards Section (user's own cards)
+              _buildSectionCardWithEdit(
+                title: '📚 $myCardsName',
                 subtitle: '${myCards.length} kartiček',
                 progress: myCardsProgress,
                 color: const Color(0xFF00D9FF),
@@ -507,13 +507,15 @@ class _HomeScreenState extends State<HomeScreen> {
                   context,
                   MaterialPageRoute(
                     builder: (context) => LearningScreen(
-                      title: 'Moje kartičky',
+                      title: myCardsName,
                       cards: myCards,
                       progress: progress,
                       onSaveProgress: _saveProgress,
                     ),
                   ),
                 ).then((_) => setState(() {})),
+                onEditName: _editMyCardsName,
+                onAddCard: _addNewCard,
               ),
 
               const SizedBox(height: 24),
@@ -533,6 +535,28 @@ class _HomeScreenState extends State<HomeScreen> {
 
               // Grammar Levels
               ...grammarLevels.map((level) => _buildLevelCard(level)),
+
+              const SizedBox(height: 24),
+
+              // David Petrov's Cards Section
+              _buildAuthorCard(
+                title: '✨ David Petrov kartičky',
+                subtitle: '${davidCards.length} kartiček',
+                progress: davidCardsProgress,
+                color: const Color(0xFFFFD700),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => LearningScreen(
+                      title: 'David Petrov kartičky',
+                      cards: davidCards,
+                      progress: progress,
+                      onSaveProgress: _saveProgress,
+                    ),
+                  ),
+                ).then((_) => setState(() {})),
+                onInfoTap: _showAuthorInfo,
+              ),
             ],
           ),
         ),
@@ -540,12 +564,161 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildSectionCard({
+  Future<void> _saveMyCards() async {
+    final cardsJson = myCards.map((c) => c.toJson()).toList();
+    await prefs.setString('myCards', json.encode(cardsJson));
+  }
+
+  Future<void> _addNewCard() async {
+    final enController = TextEditingController();
+    final czController = TextEditingController();
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF16213E),
+        title: const Text('Přidat kartičku'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: enController,
+              decoration: const InputDecoration(
+                labelText: 'Anglicky',
+                hintText: 'Hello, how are you?',
+                border: OutlineInputBorder(),
+              ),
+              maxLines: 2,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: czController,
+              decoration: const InputDecoration(
+                labelText: 'Česky',
+                hintText: 'Ahoj, jak se máš?',
+                border: OutlineInputBorder(),
+              ),
+              maxLines: 2,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Zrušit'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Přidat'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true && enController.text.isNotEmpty && czController.text.isNotEmpty) {
+      setState(() {
+        myCards.add(FlashCard(
+          en: enController.text,
+          cz: czController.text,
+          category: myCardsName,
+        ));
+      });
+      await _saveMyCards();
+    }
+  }
+
+  Future<void> _editMyCardsName() async {
+    final controller = TextEditingController(text: myCardsName);
+    final newName = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF16213E),
+        title: const Text('Změnit název'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            hintText: 'Název vašich kartiček',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Zrušit'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            child: const Text('Uložit'),
+          ),
+        ],
+      ),
+    );
+    if (newName != null && newName.isNotEmpty) {
+      setState(() {
+        myCardsName = newName;
+      });
+      await prefs.setString('myCardsName', newName);
+    }
+  }
+
+  void _showAuthorInfo() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF16213E),
+        title: Row(
+          children: [
+            Container(
+              width: 50,
+              height: 50,
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFD700).withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(25),
+              ),
+              child: const Icon(Icons.person, color: Color(0xFFFFD700), size: 30),
+            ),
+            const SizedBox(width: 12),
+            const Text('David Petrov'),
+          ],
+        ),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Autor aplikace',
+              style: TextStyle(
+                color: Color(0xFFFFD700),
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            SizedBox(height: 12),
+            Text(
+              'Tato sekce obsahuje kartičky vytvořené autorem aplikace Davidem Petrovem.\n\n'
+              'Kartičky jsou zaměřené na praktickou anglickou gramatiku a běžné fráze.\n\n'
+              'Děkuji za používání mé aplikace! 🙏',
+              style: TextStyle(height: 1.5),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Zavřít'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionCardWithEdit({
     required String title,
     required String subtitle,
     required double progress,
     required Color color,
     required VoidCallback onTap,
+    required VoidCallback onEditName,
+    required VoidCallback onAddCard,
   }) {
     return GestureDetector(
       onTap: onTap,
@@ -555,7 +728,7 @@ class _HomeScreenState extends State<HomeScreen> {
         decoration: BoxDecoration(
           color: const Color(0xFF16213E),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withOpacity(0.3), width: 1),
+          border: Border.all(color: color.withValues(alpha: 0.3), width: 1),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -563,10 +736,97 @@ class _HomeScreenState extends State<HomeScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  title,
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
                 ),
+                IconButton(
+                  icon: Icon(Icons.add_circle, color: const Color(0xFF00FF88), size: 22),
+                  onPressed: onAddCard,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  tooltip: 'Přidat kartičku',
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: Icon(Icons.edit, color: color, size: 18),
+                  onPressed: onEditName,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  tooltip: 'Změnit název',
+                ),
+                const SizedBox(width: 8),
+                Icon(Icons.arrow_forward_ios, color: color, size: 16),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(subtitle, style: TextStyle(color: Colors.grey[500])),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: progress,
+                      backgroundColor: Colors.grey[800],
+                      valueColor: AlwaysStoppedAnimation<Color>(color),
+                      minHeight: 8,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  '${(progress * 100).toInt()}%',
+                  style: TextStyle(color: color, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAuthorCard({
+    required String title,
+    required String subtitle,
+    required double progress,
+    required Color color,
+    required VoidCallback onTap,
+    required VoidCallback onInfoTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: const Color(0xFF16213E),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: color.withValues(alpha: 0.3), width: 1),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                IconButton(
+                  icon: Icon(Icons.info_outline, color: color, size: 20),
+                  onPressed: onInfoTap,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+                const SizedBox(width: 8),
                 Icon(Icons.arrow_forward_ios, color: color, size: 16),
               ],
             ),
@@ -622,7 +882,7 @@ class _HomeScreenState extends State<HomeScreen> {
           decoration: BoxDecoration(
             color: const Color(0xFF16213E),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: level.color.withOpacity(0.3), width: 1),
+            border: Border.all(color: level.color.withValues(alpha: 0.3), width: 1),
           ),
           child: Row(
             children: [
@@ -630,7 +890,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 width: 50,
                 height: 50,
                 decoration: BoxDecoration(
-                  color: level.color.withOpacity(0.2),
+                  color: level.color.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Center(
@@ -689,7 +949,7 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 // Grammar Level Screen
-class GrammarLevelScreen extends StatelessWidget {
+class GrammarLevelScreen extends StatefulWidget {
   final GrammarLevel level;
   final Map<String, CardProgress> progress;
   final Function() onSaveProgress;
@@ -703,9 +963,14 @@ class GrammarLevelScreen extends StatelessWidget {
     required this.getCardProgress,
   });
 
+  @override
+  State<GrammarLevelScreen> createState() => _GrammarLevelScreenState();
+}
+
+class _GrammarLevelScreenState extends State<GrammarLevelScreen> {
   double _calculateCategoryProgress(GrammarCategory category) {
     if (category.cards.isEmpty) return 0.0;
-    final learned = category.cards.where((c) => getCardProgress(c).repetitions > 0).length;
+    final learned = category.cards.where((c) => widget.getCardProgress(c).repetitions > 0).length;
     return learned / category.cards.length;
   }
 
@@ -713,15 +978,15 @@ class GrammarLevelScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('${level.level} - ${level.name}'),
+        title: Text('${widget.level.level} - ${widget.level.name}'),
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),
       body: ListView.builder(
         padding: const EdgeInsets.all(16),
-        itemCount: level.categories.length,
+        itemCount: widget.level.categories.length,
         itemBuilder: (context, index) {
-          final category = level.categories[index];
+          final category = widget.level.categories[index];
           final categoryProgress = _calculateCategoryProgress(category);
 
           return Padding(
@@ -733,11 +998,11 @@ class GrammarLevelScreen extends StatelessWidget {
                   builder: (context) => LearningScreen(
                     title: category.name,
                     cards: category.cards,
-                    progress: progress,
-                    onSaveProgress: onSaveProgress,
+                    progress: widget.progress,
+                    onSaveProgress: widget.onSaveProgress,
                   ),
                 ),
-              ),
+              ).then((_) => setState(() {})),
               child: Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -764,7 +1029,7 @@ class GrammarLevelScreen extends StatelessWidget {
                             child: LinearProgressIndicator(
                               value: categoryProgress,
                               backgroundColor: Colors.grey[800],
-                              valueColor: AlwaysStoppedAnimation<Color>(level.color),
+                              valueColor: AlwaysStoppedAnimation<Color>(widget.level.color),
                               minHeight: 6,
                             ),
                           ),
@@ -775,12 +1040,12 @@ class GrammarLevelScreen extends StatelessWidget {
                     Text(
                       '${(categoryProgress * 100).toInt()}%',
                       style: TextStyle(
-                        color: level.color,
+                        color: widget.level.color,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
                     const SizedBox(width: 8),
-                    Icon(Icons.play_arrow, color: level.color),
+                    Icon(Icons.play_arrow, color: widget.level.color),
                   ],
                 ),
               ),
@@ -814,7 +1079,7 @@ class LearningScreen extends StatefulWidget {
 class _LearningScreenState extends State<LearningScreen> {
   FlashCard? currentCard;
   bool showTranslation = false;
-  bool isEnToCz = true;
+  bool isEnToCz = false;
   int todayReviewed = 0;
 
   late FlutterTts flutterTts;
@@ -1122,7 +1387,7 @@ class _LearningScreenState extends State<LearningScreen> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.3),
+            color: Colors.black.withValues(alpha: 0.3),
             blurRadius: 20,
             offset: const Offset(0, 4),
           ),
