@@ -1293,7 +1293,15 @@ class _LearningScreenState extends State<LearningScreen> {
 
   Future<void> _speak() async {
     if (currentCard != null) {
-      await flutterTts.speak(currentCard!.en);
+      if (isEnToCz) {
+        // Vidím EN, chci slyšet CZ (odpověď)
+        await flutterTts.setLanguage('cs-CZ');
+        await flutterTts.speak(currentCard!.cz);
+      } else {
+        // Vidím CZ, chci slyšet EN (odpověď)
+        await flutterTts.setLanguage('en-US');
+        await flutterTts.speak(currentCard!.en);
+      }
     }
   }
 
