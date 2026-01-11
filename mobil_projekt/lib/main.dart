@@ -1,10 +1,13 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:file_picker/file_picker.dart';
 
 void main() {
   runApp(const EnglishLearningApp());
@@ -154,6 +157,11 @@ class _HomeScreenState extends State<HomeScreen> {
   String myCardsName = 'Moje kartičky';
   late SharedPreferences prefs;
   bool isLoading = true;
+  DateTime? lastBackupDate;
+  bool backupEnabled = true;
+  int lastBackupProgressCount = 0;
+  int lastBackupCardsCount = 0;
+  bool hasUnsavedProgress = false;
 
   @override
   void initState() {
@@ -167,6 +175,14 @@ class _HomeScreenState extends State<HomeScreen> {
     // Load user email and custom name
     userEmail = prefs.getString('userEmail');
     myCardsName = prefs.getString('myCardsName') ?? 'Moje kartičky';
+    backupEnabled = prefs.getBool('backupEnabled') ?? true;
+    lastBackupProgressCount = prefs.getInt('lastBackupProgressCount') ?? 0;
+    lastBackupCardsCount = prefs.getInt('lastBackupCardsCount') ?? 0;
+    hasUnsavedProgress = prefs.getBool('hasUnsavedProgress') ?? false;
+    final lastBackupStr = prefs.getString('lastBackupDate');
+    if (lastBackupStr != null) {
+      lastBackupDate = DateTime.tryParse(lastBackupStr);
+    }
 
     // Load progress
     final String? progressJson = prefs.getString('progress');
@@ -222,6 +238,11 @@ class _HomeScreenState extends State<HomeScreen> {
       progressJson[key] = value.toJson();
     });
     await prefs.setString('progress', json.encode(progressJson));
+    // Mark that we have unsaved progress since last backup
+    if (!hasUnsavedProgress) {
+      hasUnsavedProgress = true;
+      await prefs.setBool('hasUnsavedProgress', true);
+    }
   }
 
   String _getCardKey(FlashCard card) {
@@ -240,50 +261,36 @@ class _HomeScreenState extends State<HomeScreen> {
     return learned / cards.length;
   }
 
-  double _calculateCategoryProgress(GrammarCategory category) {
-    return _calculateProgress(category.cards);
-  }
-
   double _calculateLevelProgress(GrammarLevel level) {
     final allCards = level.categories.expand((c) => c.cards).toList();
     return _calculateProgress(allCards);
   }
 
-  Future<void> _backupToEmail() async {
-    // Ask for email if not set
-    if (userEmail == null || userEmail!.isEmpty) {
-      final controller = TextEditingController();
-      final email = await showDialog<String>(
+  Future<void> _shareBackup() async {
+    // Check if there's any data to backup
+    if (progress.isEmpty && myCards.isEmpty) {
+      final confirm = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
           backgroundColor: const Color(0xFF16213E),
-          title: const Text('Zadejte email pro zálohu'),
-          content: TextField(
-            controller: controller,
-            keyboardType: TextInputType.emailAddress,
-            decoration: const InputDecoration(
-              hintText: 'vas@email.cz',
-              border: OutlineInputBorder(),
-            ),
+          title: const Text('Prázdná záloha'),
+          content: const Text(
+            'Nemáte žádný pokrok k zálohování.\n\n'
+            'Pokud jste na novém zařízení, použijte "Obnovit ze zálohy" pro načtení dat.',
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () => Navigator.pop(context, false),
               child: const Text('Zrušit'),
             ),
             TextButton(
-              onPressed: () => Navigator.pop(context, controller.text),
-              child: const Text('Uložit'),
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Přesto zálohovat'),
             ),
           ],
         ),
       );
-      if (email != null && email.isNotEmpty) {
-        userEmail = email;
-        await prefs.setString('userEmail', email);
-      } else {
-        return;
-      }
+      if (confirm != true) return;
     }
 
     // Create backup data
@@ -294,78 +301,134 @@ class _HomeScreenState extends State<HomeScreen> {
       'myCards': myCards.map((c) => c.toJson()).toList(),
     };
 
-    final backupJson = json.encode(backupData);
-    final subject = 'English Learning - Záloha ${DateTime.now().toString().split(' ')[0]}';
-    final body = 'Záloha vašeho pokroku v aplikaci English Learning.\n\n'
-        'Pro obnovení zkopírujte následující text do pole "Obnovit ze zálohy":\n\n'
-        '$backupJson';
+    final backupJson = const JsonEncoder.withIndent('  ').convert(backupData);
+    final now = DateTime.now();
+    final dateStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}-${now.minute.toString().padLeft(2, '0')}';
+    final fileName = 'english_backup_$dateStr.json';
 
-    final uri = Uri(
-      scheme: 'mailto',
-      path: userEmail,
-      query: 'subject=${Uri.encodeComponent(subject)}&body=${Uri.encodeComponent(body)}',
-    );
+    try {
+      // Get temporary directory and create file
+      final directory = await getTemporaryDirectory();
+      final file = File('${directory.path}/$fileName');
+      await file.writeAsString(backupJson);
 
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Email s zálohou byl připraven')),
+      // Share the file
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        subject: 'English Learning - Záloha $dateStr',
+        text: 'Záloha vašeho pokroku v aplikaci English Learning',
       );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Nepodařilo se otevřít email')),
-      );
+
+      // Mark as backed up
+      lastBackupDate = DateTime.now();
+      lastBackupProgressCount = progress.length;
+      lastBackupCardsCount = myCards.length;
+      hasUnsavedProgress = false;
+      await prefs.setString('lastBackupDate', lastBackupDate!.toIso8601String());
+      await prefs.setInt('lastBackupProgressCount', lastBackupProgressCount);
+      await prefs.setInt('lastBackupCardsCount', lastBackupCardsCount);
+      await prefs.setBool('hasUnsavedProgress', false);
+
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Chyba při vytváření zálohy: $e')),
+        );
+      }
     }
   }
 
   Future<void> _restoreFromBackup() async {
-    final controller = TextEditingController();
-    final backupText = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF16213E),
-        title: const Text('Obnovit ze zálohy'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: TextField(
-            controller: controller,
-            maxLines: 5,
-            decoration: const InputDecoration(
-              hintText: 'Vložte text zálohy zde...',
-              border: OutlineInputBorder(),
+    // Warn if existing data will be overwritten
+    if (progress.isNotEmpty || myCards.isNotEmpty) {
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: const Color(0xFF16213E),
+          title: const Text('Přepsat stávající data?'),
+          content: Text(
+            'Máte ${progress.length} záznamů o pokroku a ${myCards.length} vlastních kartiček.\n\n'
+            'Obnovením zálohy se tyto data přepíší.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Zrušit'),
             ),
-          ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Přepsat', style: TextStyle(color: Colors.orange)),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Zrušit'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, controller.text),
-            child: const Text('Obnovit'),
-          ),
-        ],
-      ),
-    );
+      );
+      if (confirm != true) return;
+    }
 
-    if (backupText != null && backupText.isNotEmpty) {
-      try {
-        final data = json.decode(backupText);
-        if (data['progress'] != null) {
-          progress.clear();
-          (data['progress'] as Map<String, dynamic>).forEach((key, value) {
-            progress[key] = CardProgress.fromJson(value);
-          });
-          await _saveProgress();
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Záloha byla úspěšně obnovena')),
-          );
-          setState(() {});
-        }
-      } catch (e) {
+    try {
+      // Open file picker
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+      );
+
+      if (result == null || result.files.isEmpty) return;
+
+      final file = File(result.files.single.path!);
+      final backupText = await file.readAsString();
+
+      final data = json.decode(backupText);
+
+      // Restore progress
+      if (data['progress'] != null) {
+        progress.clear();
+        (data['progress'] as Map<String, dynamic>).forEach((key, value) {
+          progress[key] = CardProgress.fromJson(value);
+        });
+      }
+
+      // Restore user's cards if present
+      if (data['myCards'] != null) {
+        myCards = (data['myCards'] as List)
+            .map((c) => FlashCard.fromJson(c))
+            .toList();
+        await _saveMyCards();
+      }
+
+      // Save progress to SharedPreferences (without marking as unsaved)
+      final Map<String, dynamic> progressJson = {};
+      progress.forEach((key, value) {
+        progressJson[key] = value.toJson();
+      });
+      await prefs.setString('progress', json.encode(progressJson));
+
+      // Mark as backed up (using backup file date or now)
+      if (data['date'] != null) {
+        lastBackupDate = DateTime.tryParse(data['date']) ?? DateTime.now();
+      } else {
+        lastBackupDate = DateTime.now();
+      }
+      lastBackupProgressCount = progress.length;
+      lastBackupCardsCount = myCards.length;
+      hasUnsavedProgress = false;
+      await prefs.setString('lastBackupDate', lastBackupDate!.toIso8601String());
+      await prefs.setInt('lastBackupProgressCount', lastBackupProgressCount);
+      await prefs.setInt('lastBackupCardsCount', lastBackupCardsCount);
+      await prefs.setBool('hasUnsavedProgress', false);
+
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Neplatný formát zálohy')),
+          const SnackBar(content: Text('Záloha byla úspěšně obnovena!')),
+        );
+        setState(() {});
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Chyba při obnovení: $e')),
         );
       }
     }
@@ -383,31 +446,51 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Coming soon - Google Drive backup
-            ListTile(
-              leading: const Icon(Icons.cloud_outlined, color: Colors.grey),
-              title: const Text('Google Drive záloha'),
-              subtitle: const Text('Připravujeme - bude v další verzi'),
-              onTap: () {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Automatická záloha na Google Drive bude dostupná v příští aktualizaci')),
-                );
-              },
+            // Backup reminder toggle
+            StatefulBuilder(
+              builder: (context, setLocalState) => SwitchListTile(
+                secondary: Icon(
+                  backupEnabled ? Icons.notifications_active : Icons.notifications_off,
+                  color: backupEnabled ? const Color(0xFF00FF88) : Colors.grey,
+                ),
+                title: const Text('Připomínka zálohy'),
+                subtitle: Text(backupEnabled ? 'Připomene po týdnu' : 'Vypnuto'),
+                value: backupEnabled,
+                activeTrackColor: const Color(0xFF00FF88),
+                onChanged: (value) async {
+                  setLocalState(() {
+                    backupEnabled = value;
+                  });
+                  await prefs.setBool('backupEnabled', value);
+                  if (context.mounted) {
+                    Navigator.pop(context);
+                  }
+                  setState(() {});
+                },
+              ),
             ),
+            if (lastBackupDate != null)
+              Padding(
+                padding: const EdgeInsets.only(left: 72, bottom: 8),
+                child: Text(
+                  'Poslední záloha: ${lastBackupDate!.day}.${lastBackupDate!.month}.${lastBackupDate!.year}',
+                  style: TextStyle(color: Colors.grey[500], fontSize: 12),
+                ),
+              ),
             const Divider(color: Colors.grey),
             ListTile(
-              leading: const Icon(Icons.backup, color: Color(0xFF00D9FF)),
-              title: const Text('Zálohovat na email'),
-              subtitle: Text(userEmail ?? 'Email není nastaven'),
+              leading: const Icon(Icons.share, color: Color(0xFF00D9FF)),
+              title: const Text('Sdílet zálohu'),
+              subtitle: const Text('Odeslat soubor se zálohou'),
               onTap: () {
                 Navigator.pop(context);
-                _backupToEmail();
+                _shareBackup();
               },
             ),
             ListTile(
-              leading: const Icon(Icons.restore, color: Color(0xFF00FF88)),
-              title: const Text('Obnovit ze zálohy (text)'),
+              leading: const Icon(Icons.folder_open, color: Color(0xFF00FF88)),
+              title: const Text('Obnovit ze zálohy'),
+              subtitle: const Text('Vybrat soubor ze zařízení'),
               onTap: () {
                 Navigator.pop(context);
                 _restoreFromBackup();
@@ -421,6 +504,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 _showAboutDialog();
               },
             ),
+            // Extra padding for navigation bar
+            SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
           ],
         ),
       ),
@@ -455,13 +540,55 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  bool _needsBackup() {
+    if (!backupEnabled) return false;
+    // Nikdy nezálohováno - potřeba pokud jsou data
+    if (lastBackupDate == null) return progress.isNotEmpty || myCards.isNotEmpty;
+    // Nový pokrok od poslední zálohy
+    if (hasUnsavedProgress) return true;
+    if (progress.length > lastBackupProgressCount) return true;
+    if (myCards.length > lastBackupCardsCount) return true;
+    return false;
+  }
+
   Widget _buildBackupStatusIndicator() {
-    return const Tooltip(
-      message: 'Záloha na Google Drive - připravujeme',
-      child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: 8),
-        child: Icon(Icons.cloud_outlined, color: Colors.grey, size: 20),
-      ),
+    Color iconColor;
+    IconData iconData;
+    String tooltip;
+
+    if (!backupEnabled) {
+      iconColor = Colors.grey;
+      iconData = Icons.cloud_off_outlined;
+      tooltip = 'Záloha vypnuta';
+    } else if (progress.isEmpty && myCards.isEmpty) {
+      // Žádná data - šedá ikona
+      iconColor = Colors.grey;
+      iconData = Icons.cloud_outlined;
+      tooltip = 'Žádná data k zálohování';
+    } else if (_needsBackup()) {
+      iconColor = Colors.orange;
+      iconData = Icons.cloud_upload_outlined;
+      // Spočítej nové položky
+      final newProgress = progress.length - lastBackupProgressCount;
+      final newCards = myCards.length - lastBackupCardsCount;
+      if (lastBackupDate == null) {
+        tooltip = 'Nezálohováno - klikni pro zálohu';
+      } else {
+        final parts = <String>[];
+        if (newProgress > 0) parts.add('+$newProgress pokrok');
+        if (newCards > 0) parts.add('+$newCards kartiček');
+        tooltip = parts.isNotEmpty ? parts.join(', ') : 'Nová data k záloze';
+      }
+    } else {
+      iconColor = const Color(0xFF00FF88);
+      iconData = Icons.cloud_done_outlined;
+      tooltip = 'Zálohováno ${lastBackupDate!.day}.${lastBackupDate!.month}.${lastBackupDate!.year}';
+    }
+
+    return IconButton(
+      icon: Icon(iconData, size: 22, color: iconColor),
+      tooltip: tooltip,
+      onPressed: _shareBackup,
     );
   }
 
@@ -743,9 +870,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
                 IconButton(
-                  icon: Icon(Icons.add_circle, color: const Color(0xFF00FF88), size: 22),
+                  icon: const Icon(Icons.add_circle, color: Color(0xFF00FF88), size: 22),
                   onPressed: onAddCard,
-                  padding: EdgeInsets.zero,
+                  padding: const EdgeInsets.all(0),
                   constraints: const BoxConstraints(),
                   tooltip: 'Přidat kartičku',
                 ),
