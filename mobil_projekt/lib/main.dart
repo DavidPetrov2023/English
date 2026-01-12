@@ -266,6 +266,40 @@ class _HomeScreenState extends State<HomeScreen> {
     return _calculateProgress(allCards);
   }
 
+  Color _getProgressBarColor(List<FlashCard> cards) {
+    if (cards.isEmpty) return Colors.grey[800]!;
+
+    int totalScore = 0;
+    for (final card in cards) {
+      final prog = _getCardProgress(card);
+      if (prog.repetitions == 0) {
+        totalScore += 0;
+      } else if (prog.interval <= 1) {
+        totalScore += 1;
+      } else if (prog.interval <= 6) {
+        totalScore += 2;
+      } else if (prog.interval <= 21) {
+        totalScore += 3;
+      } else {
+        totalScore += 4;
+      }
+    }
+
+    final avgScore = totalScore / cards.length;
+
+    if (avgScore < 0.5) {
+      return Colors.grey[700]!;
+    } else if (avgScore < 1.5) {
+      return const Color(0xFFE74C3C);
+    } else if (avgScore < 2.5) {
+      return const Color(0xFFF39C12);
+    } else if (avgScore < 3.5) {
+      return const Color(0xFF27AE60);
+    } else {
+      return const Color(0xFF3498DB);
+    }
+  }
+
   Future<void> _shareBackup() async {
     // Check if there's any data to backup
     if (progress.isEmpty && myCards.isEmpty) {
@@ -629,7 +663,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 title: '📚 $myCardsName',
                 subtitle: '${myCards.length} kartiček',
                 progress: myCardsProgress,
-                color: const Color(0xFF00D9FF),
+                color: _getProgressBarColor(myCards),
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -670,7 +704,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 title: '✨ David Petrov kartičky',
                 subtitle: '${davidCards.length} kartiček',
                 progress: davidCardsProgress,
-                color: const Color(0xFFFFD700),
+                color: _getProgressBarColor(davidCards),
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -989,6 +1023,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildLevelCard(GrammarLevel level) {
     final levelProgress = _calculateLevelProgress(level);
     final totalCards = level.categories.fold<int>(0, (sum, c) => sum + c.cards.length);
+    final allCards = level.categories.expand((c) => c.cards).toList();
+    final progressColor = _getProgressBarColor(allCards);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -1050,7 +1086,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: LinearProgressIndicator(
                         value: levelProgress,
                         backgroundColor: Colors.grey[800],
-                        valueColor: AlwaysStoppedAnimation<Color>(level.color),
+                        valueColor: AlwaysStoppedAnimation<Color>(progressColor),
                         minHeight: 6,
                       ),
                     ),
@@ -1061,7 +1097,7 @@ class _HomeScreenState extends State<HomeScreen> {
               Text(
                 '${(levelProgress * 100).toInt()}%',
                 style: TextStyle(
-                  color: level.color,
+                  color: progressColor,
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -1101,6 +1137,40 @@ class _GrammarLevelScreenState extends State<GrammarLevelScreen> {
     return learned / category.cards.length;
   }
 
+  Color _getProgressBarColor(List<FlashCard> cards) {
+    if (cards.isEmpty) return Colors.grey[800]!;
+
+    int totalScore = 0;
+    for (final card in cards) {
+      final prog = widget.getCardProgress(card);
+      if (prog.repetitions == 0) {
+        totalScore += 0;
+      } else if (prog.interval <= 1) {
+        totalScore += 1;
+      } else if (prog.interval <= 6) {
+        totalScore += 2;
+      } else if (prog.interval <= 21) {
+        totalScore += 3;
+      } else {
+        totalScore += 4;
+      }
+    }
+
+    final avgScore = totalScore / cards.length;
+
+    if (avgScore < 0.5) {
+      return Colors.grey[700]!;
+    } else if (avgScore < 1.5) {
+      return const Color(0xFFE74C3C);
+    } else if (avgScore < 2.5) {
+      return const Color(0xFFF39C12);
+    } else if (avgScore < 3.5) {
+      return const Color(0xFF27AE60);
+    } else {
+      return const Color(0xFF3498DB);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1115,6 +1185,7 @@ class _GrammarLevelScreenState extends State<GrammarLevelScreen> {
         itemBuilder: (context, index) {
           final category = widget.level.categories[index];
           final categoryProgress = _calculateCategoryProgress(category);
+          final progressColor = _getProgressBarColor(category.cards);
 
           return Padding(
             padding: const EdgeInsets.only(bottom: 12),
@@ -1156,7 +1227,7 @@ class _GrammarLevelScreenState extends State<GrammarLevelScreen> {
                             child: LinearProgressIndicator(
                               value: categoryProgress,
                               backgroundColor: Colors.grey[800],
-                              valueColor: AlwaysStoppedAnimation<Color>(widget.level.color),
+                              valueColor: AlwaysStoppedAnimation<Color>(progressColor),
                               minHeight: 6,
                             ),
                           ),
@@ -1167,7 +1238,7 @@ class _GrammarLevelScreenState extends State<GrammarLevelScreen> {
                     Text(
                       '${(categoryProgress * 100).toInt()}%',
                       style: TextStyle(
-                        color: widget.level.color,
+                        color: progressColor,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
