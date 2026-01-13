@@ -553,15 +553,16 @@ class _HomeScreenState extends State<HomeScreen> {
         backgroundColor: const Color(0xFF16213E),
         title: const Text('O aplikaci'),
         content: const Text(
-          'English Learning v2.0\n\n'
+          'English Learning v1.2.2\n\n'
           'Aplikace pro učení angličtiny pomocí kartiček.\n\n'
           'Funkce:\n'
           '• Vlastní kartičky\n'
           '• Gramatika A1-C1\n'
           '• SM-2 algoritmus (spaced repetition)\n'
           '• Text-to-Speech výslovnost\n'
-          '• Záloha na email\n\n'
-          'Autor: David Petrov',
+          '• Záloha sdílením souboru\n\n'
+          'Autor: David Petrov\n'
+          'Email: davidpetrov@email.cz',
           style: TextStyle(height: 1.5),
         ),
         actions: [
@@ -857,7 +858,8 @@ class _HomeScreenState extends State<HomeScreen> {
             Text(
               'Tato sekce obsahuje kartičky vytvořené autorem aplikace Davidem Petrovem.\n\n'
               'Kartičky jsou zaměřené na praktickou anglickou gramatiku a běžné fráze.\n\n'
-              'Děkuji za používání mé aplikace! 🙏',
+              'Děkuji za používání mé aplikace! 🙏\n\n'
+              'Email: davidpetrov@email.cz',
               style: TextStyle(height: 1.5),
             ),
           ],
