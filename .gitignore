@@ -43,3 +43,6 @@ credentials.json
 cards.json
 *.csv
 nul
+
+# Temp files
+tmpclaude-*
