@@ -1283,13 +1283,30 @@ class _LearningScreenState extends State<LearningScreen> {
   int todayReviewed = 0;
 
   late FlutterTts flutterTts;
+  String? _lastCheckDate;
 
   @override
   void initState() {
     super.initState();
     flutterTts = FlutterTts();
     _initTts();
+    _lastCheckDate = DateTime.now().toIso8601String().split('T')[0];
     _showNextCard();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _checkNewDay();
+  }
+
+  void _checkNewDay() {
+    final today = DateTime.now().toIso8601String().split('T')[0];
+    if (_lastCheckDate != today) {
+      _lastCheckDate = today;
+      todayReviewed = 0;
+      _showNextCard();
+    }
   }
 
   Future<void> _initTts() async {
@@ -1568,17 +1585,53 @@ class _LearningScreenState extends State<LearningScreen> {
     );
   }
 
+  String _getNextReviewInfo() {
+    final today = DateTime.now();
+    final todayStr = today.toIso8601String().split('T')[0];
+
+    String? nearestDate;
+    for (final card in widget.cards) {
+      final prog = _getCardProgress(card);
+      if (prog.nextReview.compareTo(todayStr) > 0) {
+        if (nearestDate == null || prog.nextReview.compareTo(nearestDate) < 0) {
+          nearestDate = prog.nextReview;
+        }
+      }
+    }
+
+    if (nearestDate == null) return '✨ Vše naučeno!';
+
+    final nextDate = DateTime.parse(nearestDate);
+    final diff = nextDate.difference(today).inDays + 1;
+
+    if (diff <= 1) return '📅 Další opakování: zítra';
+    return '📅 Další opakování: za $diff dní';
+  }
+
   Widget _buildCard() {
     if (currentCard == null) {
+      final nextInfo = _getNextReviewInfo();
+      final message = todayReviewed > 0 ? '🎉 Hotovo na dnes!' : '📚 Žádné kartičky na dnes';
+
       return Container(
         decoration: BoxDecoration(
           color: const Color(0xFF16213E),
           borderRadius: BorderRadius.circular(16),
         ),
-        child: const Center(
-          child: Text(
-            '🎉 Hotovo na dnes!',
-            style: TextStyle(fontSize: 24),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                message,
+                style: const TextStyle(fontSize: 24),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                nextInfo,
+                style: TextStyle(fontSize: 16, color: Colors.grey[400]),
+              ),
+            ],
           ),
         ),
       );
