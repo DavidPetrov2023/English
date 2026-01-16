@@ -553,7 +553,7 @@ class _HomeScreenState extends State<HomeScreen> {
         backgroundColor: const Color(0xFF16213E),
         title: const Text('O aplikaci'),
         content: const Text(
-          'English Learning v1.2.2\n\n'
+          'English Learning v1.2.4\n\n'
           'Aplikace pro učení angličtiny pomocí kartiček.\n\n'
           'Funkce:\n'
           '• Vlastní kartičky\n'
