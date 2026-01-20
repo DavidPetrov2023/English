@@ -266,6 +266,19 @@ class _HomeScreenState extends State<HomeScreen> {
     return _calculateProgress(allCards);
   }
 
+  bool _levelHasDueCards(GrammarLevel level) {
+    final today = DateTime.now().toIso8601String().split('T')[0];
+    for (final category in level.categories) {
+      for (final card in category.cards) {
+        final prog = _getCardProgress(card);
+        if (prog.nextReview.compareTo(today) <= 0) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   Color _getProgressBarColor(List<FlashCard> cards) {
     if (cards.isEmpty) return Colors.grey[800]!;
 
@@ -553,7 +566,7 @@ class _HomeScreenState extends State<HomeScreen> {
         backgroundColor: const Color(0xFF16213E),
         title: const Text('O aplikaci'),
         content: const Text(
-          'English Learning v1.2.4\n\n'
+          'English Learning v1.2.6\n\n'
           'Aplikace pro učení angličtiny pomocí kartiček.\n\n'
           'Funkce:\n'
           '• Vlastní kartičky\n'
@@ -1104,7 +1117,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               const SizedBox(width: 8),
-              Icon(Icons.arrow_forward_ios, color: level.color, size: 16),
+              Icon(
+                Icons.arrow_forward_ios,
+                color: _levelHasDueCards(level) ? Colors.green : Colors.grey,
+                size: 16,
+              ),
             ],
           ),
         ),
@@ -1133,6 +1150,14 @@ class GrammarLevelScreen extends StatefulWidget {
 }
 
 class _GrammarLevelScreenState extends State<GrammarLevelScreen> {
+  bool _hasDueCards(List<FlashCard> cards) {
+    final today = DateTime.now().toIso8601String().split('T')[0];
+    return cards.any((card) {
+      final prog = widget.getCardProgress(card);
+      return prog.nextReview.compareTo(today) <= 0;
+    });
+  }
+
   double _calculateCategoryProgress(GrammarCategory category) {
     if (category.cards.isEmpty) return 0.0;
     final learned = category.cards.where((c) => widget.getCardProgress(c).repetitions > 0).length;
@@ -1245,7 +1270,12 @@ class _GrammarLevelScreenState extends State<GrammarLevelScreen> {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    Icon(Icons.play_arrow, color: widget.level.color),
+                    Icon(
+                      Icons.play_arrow,
+                      color: _hasDueCards(category.cards)
+                          ? Colors.green
+                          : Colors.grey,
+                    ),
                   ],
                 ),
               ),
