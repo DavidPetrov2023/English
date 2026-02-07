@@ -1,4 +1,4 @@
-# English Learning - Android App
+# Language Learning - Android App
 
 Mobilní aplikace pro učení angličtiny metodou spaced repetition (opakování s rozestupy).
 

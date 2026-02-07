@@ -1,4 +1,4 @@
-// Basic Flutter widget test for English Learning app
+// Basic Flutter widget test for Language Learning app
 
 import 'package:flutter_test/flutter_test.dart';
 
@@ -13,6 +13,6 @@ void main() {
     await tester.pumpAndSettle();
 
     // Verify that the app title is displayed
-    expect(find.text('English Learning'), findsOneWidget);
+    expect(find.text('Language Learning'), findsOneWidget);
   });
 }

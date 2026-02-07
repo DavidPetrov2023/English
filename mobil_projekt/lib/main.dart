@@ -9,6 +9,46 @@ import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:file_picker/file_picker.dart';
 
+enum AppLanguage { en, de }
+
+class LanguageConfig {
+  final AppLanguage language;
+  const LanguageConfig(this.language);
+
+  String get code => language == AppLanguage.en ? 'en' : 'de';
+  String get ttsLocale => language == AppLanguage.en ? 'en-US' : 'de-DE';
+  String get nativeTtsLocale => 'cs-CZ';
+  String get label => language == AppLanguage.en ? 'Angličtina' : 'Němčina';
+  String get labelGenitive => language == AppLanguage.en ? 'angličtiny' : 'němčiny';
+  String get shortLabel => language == AppLanguage.en ? 'EN' : 'DE';
+  String get flagEmoji => language == AppLanguage.en ? '🇺🇸' : '🇩🇪';
+  String get cardsAsset => language == AppLanguage.en ? 'assets/cards.json' : 'assets/cards_de.json';
+  String get grammarAssetPrefix => language == AppLanguage.en ? 'assets/grammar_' : 'assets/grammar_de_';
+  String get addCardLabel => language == AppLanguage.en ? 'Anglicky' : 'Německy';
+  String get addCardHint => language == AppLanguage.en ? 'Hello, how are you?' : 'Hallo, wie geht es dir?';
+  String get backupFilePrefix => language == AppLanguage.en ? 'english' : 'german';
+
+  // SharedPreferences keys - per language
+  String get progressKey => '${code}_progress';
+  String get myCardsKey => '${code}_myCards';
+  String get myCardsNameKey => '${code}_myCardsName';
+  String get lastBackupDateKey => '${code}_lastBackupDate';
+  String get lastBackupProgressCountKey => '${code}_lastBackupProgressCount';
+  String get lastBackupCardsCountKey => '${code}_lastBackupCardsCount';
+  String get hasUnsavedProgressKey => '${code}_hasUnsavedProgress';
+
+  String directionLabel(bool isForeignToCz) {
+    return isForeignToCz ? '$shortLabel → CZ' : 'CZ → $shortLabel';
+  }
+
+  static LanguageConfig? fromCode(String code) {
+    for (final lang in AppLanguage.values) {
+      if (lang.name == code) return LanguageConfig(lang);
+    }
+    return null;
+  }
+}
+
 void main() {
   runApp(const EnglishLearningApp());
 }
@@ -19,7 +59,7 @@ class EnglishLearningApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'English Learning',
+      title: 'LangCards',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.dark,
@@ -162,30 +202,98 @@ class _HomeScreenState extends State<HomeScreen> {
   int lastBackupProgressCount = 0;
   int lastBackupCardsCount = 0;
   bool hasUnsavedProgress = false;
+  late LanguageConfig langConfig;
+  bool _showFirstLaunchPicker = false;
 
   @override
   void initState() {
     super.initState();
+    langConfig = const LanguageConfig(AppLanguage.en);
     _loadAllData();
+  }
+
+  Future<void> _migrateOldData() async {
+    if (prefs.getBool('dataMigrated') == true) return;
+
+    final keysToMigrate = {
+      'progress': 'en_progress',
+      'myCards': 'en_myCards',
+      'myCardsName': 'en_myCardsName',
+      'lastBackupDate': 'en_lastBackupDate',
+      'lastBackupProgressCount': 'en_lastBackupProgressCount',
+      'lastBackupCardsCount': 'en_lastBackupCardsCount',
+      'hasUnsavedProgress': 'en_hasUnsavedProgress',
+    };
+
+    for (final entry in keysToMigrate.entries) {
+      final oldKey = entry.key;
+      final newKey = entry.value;
+      // String keys
+      if (oldKey == 'progress' || oldKey == 'myCards' || oldKey == 'myCardsName' || oldKey == 'lastBackupDate') {
+        final val = prefs.getString(oldKey);
+        if (val != null) {
+          await prefs.setString(newKey, val);
+          await prefs.remove(oldKey);
+        }
+      }
+      // Int keys
+      if (oldKey == 'lastBackupProgressCount' || oldKey == 'lastBackupCardsCount') {
+        final val = prefs.getInt(oldKey);
+        if (val != null) {
+          await prefs.setInt(newKey, val);
+          await prefs.remove(oldKey);
+        }
+      }
+      // Bool keys
+      if (oldKey == 'hasUnsavedProgress') {
+        final val = prefs.getBool(oldKey);
+        if (val != null) {
+          await prefs.setBool(newKey, val);
+          await prefs.remove(oldKey);
+        }
+      }
+    }
+
+    await prefs.setBool('dataMigrated', true);
+    if (!prefs.containsKey('selectedLanguage')) {
+      await prefs.setString('selectedLanguage', 'en');
+    }
   }
 
   Future<void> _loadAllData() async {
     prefs = await SharedPreferences.getInstance();
 
-    // Load user email and custom name
+    // Migrate old data (one-time)
+    await _migrateOldData();
+
+    // Load language
+    final savedLang = prefs.getString('selectedLanguage');
+    if (savedLang == null) {
+      _showFirstLaunchPicker = true;
+      langConfig = const LanguageConfig(AppLanguage.en);
+    } else {
+      langConfig = LanguageConfig.fromCode(savedLang) ?? const LanguageConfig(AppLanguage.en);
+    }
+
+    // Load global settings
     userEmail = prefs.getString('userEmail');
-    myCardsName = prefs.getString('myCardsName') ?? 'Moje kartičky';
     backupEnabled = prefs.getBool('backupEnabled') ?? true;
-    lastBackupProgressCount = prefs.getInt('lastBackupProgressCount') ?? 0;
-    lastBackupCardsCount = prefs.getInt('lastBackupCardsCount') ?? 0;
-    hasUnsavedProgress = prefs.getBool('hasUnsavedProgress') ?? false;
-    final lastBackupStr = prefs.getString('lastBackupDate');
+
+    // Load per-language settings
+    myCardsName = prefs.getString(langConfig.myCardsNameKey) ?? 'Moje kartičky';
+    lastBackupProgressCount = prefs.getInt(langConfig.lastBackupProgressCountKey) ?? 0;
+    lastBackupCardsCount = prefs.getInt(langConfig.lastBackupCardsCountKey) ?? 0;
+    hasUnsavedProgress = prefs.getBool(langConfig.hasUnsavedProgressKey) ?? false;
+    final lastBackupStr = prefs.getString(langConfig.lastBackupDateKey);
     if (lastBackupStr != null) {
       lastBackupDate = DateTime.tryParse(lastBackupStr);
+    } else {
+      lastBackupDate = null;
     }
 
     // Load progress
-    final String? progressJson = prefs.getString('progress');
+    progress = {};
+    final String? progressJson = prefs.getString(langConfig.progressKey);
     if (progressJson != null) {
       final Map<String, dynamic> progressData = json.decode(progressJson);
       progressData.forEach((key, value) {
@@ -195,7 +303,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     // Load David's cards (author's cards)
     try {
-      final String jsonString = await rootBundle.loadString('assets/cards.json');
+      final String jsonString = await rootBundle.loadString(langConfig.cardsAsset);
       final Map<String, dynamic> jsonData = json.decode(jsonString);
       final List<dynamic> cardsList = jsonData['cards'] ?? [];
       davidCards = cardsList
@@ -207,7 +315,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     // Load user's own cards
-    final String? myCardsJson = prefs.getString('myCards');
+    final String? myCardsJson = prefs.getString(langConfig.myCardsKey);
     if (myCardsJson != null) {
       final List<dynamic> cardsList = json.decode(myCardsJson);
       myCards = cardsList.map((c) => FlashCard.fromJson(c)).toList();
@@ -216,10 +324,11 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     // Load grammar levels
+    grammarLevels = [];
     final levels = ['A1', 'A2', 'B1', 'B2', 'C1'];
     for (final level in levels) {
       try {
-        final String jsonString = await rootBundle.loadString('assets/grammar_$level.json');
+        final String jsonString = await rootBundle.loadString('${langConfig.grammarAssetPrefix}$level.json');
         final Map<String, dynamic> jsonData = json.decode(jsonString);
         grammarLevels.add(GrammarLevel.fromJson(jsonData));
       } catch (e) {
@@ -230,6 +339,62 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       isLoading = false;
     });
+
+    if (_showFirstLaunchPicker) {
+      _showFirstLaunchPicker = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _showLanguagePicker();
+      });
+    }
+  }
+
+  void _showLanguagePicker() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF16213E),
+        title: const Text('Vyberte jazyk'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Text('🇺🇸', style: TextStyle(fontSize: 28)),
+              title: const Text('Angličtina'),
+              selected: langConfig.language == AppLanguage.en,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              selectedTileColor: Colors.green.withValues(alpha: 0.2),
+              onTap: () { Navigator.pop(context); _switchLanguage(AppLanguage.en); },
+            ),
+            const SizedBox(height: 8),
+            ListTile(
+              leading: const Text('🇩🇪', style: TextStyle(fontSize: 28)),
+              title: const Text('Němčina'),
+              selected: langConfig.language == AppLanguage.de,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              selectedTileColor: Colors.green.withValues(alpha: 0.2),
+              onTap: () { Navigator.pop(context); _switchLanguage(AppLanguage.de); },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _switchLanguage(AppLanguage lang) async {
+    if (langConfig.language == lang && prefs.containsKey('selectedLanguage')) return;
+
+    await prefs.setString('selectedLanguage', lang == AppLanguage.de ? 'de' : 'en');
+
+    setState(() {
+      isLoading = true;
+      myCards = [];
+      davidCards = [];
+      grammarLevels = [];
+      progress = {};
+    });
+
+    await _loadAllData();
   }
 
   Future<void> _saveProgress() async {
@@ -237,11 +402,11 @@ class _HomeScreenState extends State<HomeScreen> {
     progress.forEach((key, value) {
       progressJson[key] = value.toJson();
     });
-    await prefs.setString('progress', json.encode(progressJson));
+    await prefs.setString(langConfig.progressKey, json.encode(progressJson));
     // Mark that we have unsaved progress since last backup
     if (!hasUnsavedProgress) {
       hasUnsavedProgress = true;
-      await prefs.setBool('hasUnsavedProgress', true);
+      await prefs.setBool(langConfig.hasUnsavedProgressKey, true);
     }
   }
 
@@ -340,18 +505,30 @@ class _HomeScreenState extends State<HomeScreen> {
       if (confirm != true) return;
     }
 
-    // Create backup data
+    // Create backup data with ALL languages
+    final Map<String, dynamic> allLangs = {};
+    for (final lang in AppLanguage.values) {
+      final lc = LanguageConfig(lang);
+      final progJson = prefs.getString(lc.progressKey);
+      final cardsJson = prefs.getString(lc.myCardsKey);
+      if (progJson != null || cardsJson != null) {
+        allLangs[lc.code] = {
+          'progress': progJson != null ? json.decode(progJson) : {},
+          'myCards': cardsJson != null ? json.decode(cardsJson) : [],
+        };
+      }
+    }
+
     final backupData = {
-      'version': '2.0',
+      'version': '3.0',
       'date': DateTime.now().toIso8601String(),
-      'progress': progress.map((k, v) => MapEntry(k, v.toJson())),
-      'myCards': myCards.map((c) => c.toJson()).toList(),
+      'languages': allLangs,
     };
 
     final backupJson = const JsonEncoder.withIndent('  ').convert(backupData);
     final now = DateTime.now();
     final dateStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}-${now.minute.toString().padLeft(2, '0')}';
-    final fileName = 'english_backup_$dateStr.json';
+    final fileName = 'langcards_backup_$dateStr.json';
 
     try {
       // Get temporary directory and create file
@@ -362,19 +539,27 @@ class _HomeScreenState extends State<HomeScreen> {
       // Share the file
       await Share.shareXFiles(
         [XFile(file.path)],
-        subject: 'English Learning - Záloha $dateStr',
-        text: 'Záloha vašeho pokroku v aplikaci English Learning',
+        subject: 'LangCards - Záloha $dateStr',
+        text: 'Záloha vašeho pokroku v aplikaci LangCards',
       );
 
-      // Mark as backed up
+      // Mark as backed up for all languages
       lastBackupDate = DateTime.now();
+      hasUnsavedProgress = false;
+      for (final lang in AppLanguage.values) {
+        final lc = LanguageConfig(lang);
+        await prefs.setString(lc.lastBackupDateKey, lastBackupDate!.toIso8601String());
+        await prefs.setBool(lc.hasUnsavedProgressKey, false);
+        // Save per-language backup counts
+        final progJson = prefs.getString(lc.progressKey);
+        final cardsJson = prefs.getString(lc.myCardsKey);
+        final progCount = progJson != null ? (json.decode(progJson) as Map).length : 0;
+        final cardsCount = cardsJson != null ? (json.decode(cardsJson) as List).length : 0;
+        await prefs.setInt(lc.lastBackupProgressCountKey, progCount);
+        await prefs.setInt(lc.lastBackupCardsCountKey, cardsCount);
+      }
       lastBackupProgressCount = progress.length;
       lastBackupCardsCount = myCards.length;
-      hasUnsavedProgress = false;
-      await prefs.setString('lastBackupDate', lastBackupDate!.toIso8601String());
-      await prefs.setInt('lastBackupProgressCount', lastBackupProgressCount);
-      await prefs.setInt('lastBackupCardsCount', lastBackupCardsCount);
-      await prefs.setBool('hasUnsavedProgress', false);
 
       if (mounted) {
         setState(() {});
@@ -418,8 +603,7 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       // Open file picker
       final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['json'],
+        type: FileType.any,
       );
 
       if (result == null || result.files.isEmpty) return;
@@ -429,47 +613,97 @@ class _HomeScreenState extends State<HomeScreen> {
 
       final data = json.decode(backupText);
 
-      // Restore progress
-      if (data['progress'] != null) {
+      final backupDate = data['date'] != null
+          ? (DateTime.tryParse(data['date']) ?? DateTime.now())
+          : DateTime.now();
+
+      if (data['version'] == '3.0' && data['languages'] != null) {
+        // v3.0 format: restore ALL languages
+        final languages = data['languages'] as Map<String, dynamic>;
+        for (final entry in languages.entries) {
+          final lc = LanguageConfig.fromCode(entry.key);
+          if (lc == null) continue; // skip unknown languages
+          final langData = entry.value as Map<String, dynamic>;
+
+          // Save progress for this language
+          if (langData['progress'] != null) {
+            await prefs.setString(lc.progressKey, json.encode(langData['progress']));
+          }
+
+          // Save cards for this language
+          if (langData['myCards'] != null) {
+            await prefs.setString(lc.myCardsKey, json.encode(langData['myCards']));
+          }
+
+          // Mark this language as backed up
+          await prefs.setString(lc.lastBackupDateKey, backupDate.toIso8601String());
+          await prefs.setBool(lc.hasUnsavedProgressKey, false);
+        }
+
+        // Reload current language data into memory
+        final progJson = prefs.getString(langConfig.progressKey);
         progress.clear();
-        (data['progress'] as Map<String, dynamic>).forEach((key, value) {
-          progress[key] = CardProgress.fromJson(value);
-        });
-      }
+        if (progJson != null) {
+          (json.decode(progJson) as Map<String, dynamic>).forEach((key, value) {
+            progress[key] = CardProgress.fromJson(value);
+          });
+        }
+        final cardsJson = prefs.getString(langConfig.myCardsKey);
+        if (cardsJson != null) {
+          myCards = (json.decode(cardsJson) as List)
+              .map((c) => FlashCard.fromJson(c))
+              .toList();
+        } else {
+          myCards = [];
+        }
 
-      // Restore user's cards if present
-      if (data['myCards'] != null) {
-        myCards = (data['myCards'] as List)
-            .map((c) => FlashCard.fromJson(c))
-            .toList();
-        await _saveMyCards();
-      }
-
-      // Save progress to SharedPreferences (without marking as unsaved)
-      final Map<String, dynamic> progressJson = {};
-      progress.forEach((key, value) {
-        progressJson[key] = value.toJson();
-      });
-      await prefs.setString('progress', json.encode(progressJson));
-
-      // Mark as backed up (using backup file date or now)
-      if (data['date'] != null) {
-        lastBackupDate = DateTime.tryParse(data['date']) ?? DateTime.now();
+        final restoredLangs = languages.keys.map((c) => c.toUpperCase()).join(', ');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Záloha obnovena pro jazyky: $restoredLangs')),
+          );
+        }
       } else {
-        lastBackupDate = DateTime.now();
+        // v2.0 or older format: restore to current language only
+        if (data['progress'] != null) {
+          progress.clear();
+          (data['progress'] as Map<String, dynamic>).forEach((key, value) {
+            progress[key] = CardProgress.fromJson(value);
+          });
+        }
+
+        if (data['myCards'] != null) {
+          myCards = (data['myCards'] as List)
+              .map((c) => FlashCard.fromJson(c))
+              .toList();
+          await _saveMyCards();
+        }
+
+        // Save progress to SharedPreferences
+        final Map<String, dynamic> progressJson = {};
+        progress.forEach((key, value) {
+          progressJson[key] = value.toJson();
+        });
+        await prefs.setString(langConfig.progressKey, json.encode(progressJson));
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Záloha obnovena pro ${langConfig.shortLabel}')),
+          );
+        }
       }
+
+      // Update backup tracking for current language
+      lastBackupDate = backupDate;
       lastBackupProgressCount = progress.length;
       lastBackupCardsCount = myCards.length;
       hasUnsavedProgress = false;
-      await prefs.setString('lastBackupDate', lastBackupDate!.toIso8601String());
-      await prefs.setInt('lastBackupProgressCount', lastBackupProgressCount);
-      await prefs.setInt('lastBackupCardsCount', lastBackupCardsCount);
-      await prefs.setBool('hasUnsavedProgress', false);
+      await prefs.setString(langConfig.lastBackupDateKey, lastBackupDate!.toIso8601String());
+      await prefs.setInt(langConfig.lastBackupProgressCountKey, lastBackupProgressCount);
+      await prefs.setInt(langConfig.lastBackupCardsCountKey, lastBackupCardsCount);
+      await prefs.setBool(langConfig.hasUnsavedProgressKey, false);
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Záloha byla úspěšně obnovena!')),
-        );
         setState(() {});
       }
     } catch (e) {
@@ -565,9 +799,9 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF16213E),
         title: const Text('O aplikaci'),
-        content: const Text(
-          'English Learning v1.2.6\n\n'
-          'Aplikace pro učení angličtiny pomocí kartiček.\n\n'
+        content: Text(
+          'LangCards v1.3.1\n\n'
+          'Aplikace pro učení cizích jazyků pomocí kartiček.\n\n'
           'Funkce:\n'
           '• Vlastní kartičky\n'
           '• Gramatika A1-C1\n'
@@ -653,11 +887,17 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('English Learning'),
+        title: const Text('LangCards'),
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
         actions: [
+          // Language picker
+          IconButton(
+            icon: Text(langConfig.flagEmoji, style: const TextStyle(fontSize: 22)),
+            tooltip: langConfig.label,
+            onPressed: _showLanguagePicker,
+          ),
           // Backup status indicator
           _buildBackupStatusIndicator(),
           IconButton(
@@ -686,6 +926,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       cards: myCards,
                       progress: progress,
                       onSaveProgress: _saveProgress,
+                      langConfig: langConfig,
                     ),
                   ),
                 ).then((_) => setState(() {})),
@@ -711,27 +952,30 @@ class _HomeScreenState extends State<HomeScreen> {
               // Grammar Levels
               ...grammarLevels.map((level) => _buildLevelCard(level)),
 
-              const SizedBox(height: 24),
+              if (langConfig.language == AppLanguage.en && davidCards.isNotEmpty) ...[
+                const SizedBox(height: 24),
 
-              // David Petrov's Cards Section
-              _buildAuthorCard(
-                title: '✨ David Petrov kartičky',
-                subtitle: '${davidCards.length} kartiček',
-                progress: davidCardsProgress,
-                color: _getProgressBarColor(davidCards),
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => LearningScreen(
-                      title: 'David Petrov kartičky',
-                      cards: davidCards,
-                      progress: progress,
-                      onSaveProgress: _saveProgress,
+                // David Petrov's Cards Section (only for English)
+                _buildAuthorCard(
+                  title: '✨ David Petrov kartičky',
+                  subtitle: '${davidCards.length} kartiček',
+                  progress: davidCardsProgress,
+                  color: _getProgressBarColor(davidCards),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => LearningScreen(
+                        title: 'David Petrov kartičky',
+                        cards: davidCards,
+                        progress: progress,
+                        onSaveProgress: _saveProgress,
+                        langConfig: langConfig,
+                      ),
                     ),
-                  ),
-                ).then((_) => setState(() {})),
-                onInfoTap: _showAuthorInfo,
-              ),
+                  ).then((_) => setState(() {})),
+                  onInfoTap: _showAuthorInfo,
+                ),
+              ],
             ],
           ),
         ),
@@ -741,7 +985,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _saveMyCards() async {
     final cardsJson = myCards.map((c) => c.toJson()).toList();
-    await prefs.setString('myCards', json.encode(cardsJson));
+    await prefs.setString(langConfig.myCardsKey, json.encode(cardsJson));
   }
 
   Future<void> _addNewCard() async {
@@ -758,10 +1002,10 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             TextField(
               controller: enController,
-              decoration: const InputDecoration(
-                labelText: 'Anglicky',
-                hintText: 'Hello, how are you?',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: langConfig.addCardLabel,
+                hintText: langConfig.addCardHint,
+                border: const OutlineInputBorder(),
               ),
               maxLines: 2,
             ),
@@ -832,7 +1076,7 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         myCardsName = newName;
       });
-      await prefs.setString('myCardsName', newName);
+      await prefs.setString(langConfig.myCardsNameKey, newName);
     }
   }
 
@@ -870,7 +1114,7 @@ class _HomeScreenState extends State<HomeScreen> {
             SizedBox(height: 12),
             Text(
               'Tato sekce obsahuje kartičky vytvořené autorem aplikace Davidem Petrovem.\n\n'
-              'Kartičky jsou zaměřené na praktickou anglickou gramatiku a běžné fráze.\n\n'
+              'Kartičky jsou zaměřené na praktickou gramatiku a běžné fráze.\n\n'
               'Děkuji za používání mé aplikace! 🙏\n\n'
               'Email: davidpetrov@email.cz',
               style: TextStyle(height: 1.5),
@@ -1052,6 +1296,7 @@ class _HomeScreenState extends State<HomeScreen> {
               progress: progress,
               onSaveProgress: _saveProgress,
               getCardProgress: _getCardProgress,
+              langConfig: langConfig,
             ),
           ),
         ).then((_) => setState(() {})),
@@ -1136,6 +1381,7 @@ class GrammarLevelScreen extends StatefulWidget {
   final Map<String, CardProgress> progress;
   final Function() onSaveProgress;
   final CardProgress Function(FlashCard) getCardProgress;
+  final LanguageConfig langConfig;
 
   const GrammarLevelScreen({
     super.key,
@@ -1143,6 +1389,7 @@ class GrammarLevelScreen extends StatefulWidget {
     required this.progress,
     required this.onSaveProgress,
     required this.getCardProgress,
+    required this.langConfig,
   });
 
   @override
@@ -1225,6 +1472,7 @@ class _GrammarLevelScreenState extends State<GrammarLevelScreen> {
                     cards: category.cards,
                     progress: widget.progress,
                     onSaveProgress: widget.onSaveProgress,
+                    langConfig: widget.langConfig,
                   ),
                 ),
               ).then((_) => setState(() {})),
@@ -1293,6 +1541,7 @@ class LearningScreen extends StatefulWidget {
   final List<FlashCard> cards;
   final Map<String, CardProgress> progress;
   final Function() onSaveProgress;
+  final LanguageConfig langConfig;
 
   const LearningScreen({
     super.key,
@@ -1300,6 +1549,7 @@ class LearningScreen extends StatefulWidget {
     required this.cards,
     required this.progress,
     required this.onSaveProgress,
+    required this.langConfig,
   });
 
   @override
@@ -1340,24 +1590,25 @@ class _LearningScreenState extends State<LearningScreen> {
   }
 
   Future<void> _initTts() async {
-    await flutterTts.setLanguage('en-US');
+    await flutterTts.setLanguage(widget.langConfig.ttsLocale);
     await flutterTts.setSpeechRate(0.4);
     await flutterTts.setPitch(1.0);
     await flutterTts.awaitSpeakCompletion(true);
 
     List<dynamic> voices = await flutterTts.getVoices;
-    var englishVoices = voices.where((v) =>
-      v['locale'].toString().startsWith('en') &&
+    final langCode = widget.langConfig.code;
+    var preferredVoices = voices.where((v) =>
+      v['locale'].toString().startsWith(langCode) &&
       (v['name'].toString().toLowerCase().contains('female') ||
       v['name'].toString().toLowerCase().contains('samantha') ||
       v['name'].toString().toLowerCase().contains('google') ||
       v['name'].toString().contains('en-us-x-sfg'))
     ).toList();
 
-    if (englishVoices.isNotEmpty) {
+    if (preferredVoices.isNotEmpty) {
       await flutterTts.setVoice({
-        "name": englishVoices.first['name'],
-        "locale": englishVoices.first['locale']
+        "name": preferredVoices.first['name'],
+        "locale": preferredVoices.first['locale']
       });
     }
   }
@@ -1414,12 +1665,12 @@ class _LearningScreenState extends State<LearningScreen> {
   Future<void> _speak() async {
     if (currentCard != null) {
       if (isEnToCz) {
-        // Vidím EN, chci slyšet CZ (odpověď)
-        await flutterTts.setLanguage('cs-CZ');
+        // Vidím cizí jazyk, chci slyšet CZ (odpověď)
+        await flutterTts.setLanguage(widget.langConfig.nativeTtsLocale);
         await flutterTts.speak(currentCard!.cz);
       } else {
-        // Vidím CZ, chci slyšet EN (odpověď)
-        await flutterTts.setLanguage('en-US');
+        // Vidím CZ, chci slyšet cizí jazyk (odpověď)
+        await flutterTts.setLanguage(widget.langConfig.ttsLocale);
         await flutterTts.speak(currentCard!.en);
       }
     }
@@ -1488,6 +1739,7 @@ class _LearningScreenState extends State<LearningScreen> {
           getCardColor: _getCardColor,
           getCardProgress: _getCardProgress,
           flutterTts: flutterTts,
+          langConfig: widget.langConfig,
         ),
       ),
     );
@@ -1536,9 +1788,9 @@ class _LearningScreenState extends State<LearningScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  _buildDirectionButton('EN → CZ', isEnToCz),
+                  _buildDirectionButton(widget.langConfig.directionLabel(true), isEnToCz),
                   const SizedBox(width: 10),
-                  _buildDirectionButton('CZ → EN', !isEnToCz),
+                  _buildDirectionButton(widget.langConfig.directionLabel(false), !isEnToCz),
                 ],
               ),
               const SizedBox(height: 20),
@@ -1757,6 +2009,7 @@ class CardsOverviewScreen extends StatelessWidget {
   final Color Function(FlashCard) getCardColor;
   final CardProgress Function(FlashCard) getCardProgress;
   final FlutterTts flutterTts;
+  final LanguageConfig langConfig;
 
   const CardsOverviewScreen({
     super.key,
@@ -1764,6 +2017,7 @@ class CardsOverviewScreen extends StatelessWidget {
     required this.getCardColor,
     required this.getCardProgress,
     required this.flutterTts,
+    required this.langConfig,
   });
 
   void _showCardDetail(BuildContext context, FlashCard card) {
@@ -1786,7 +2040,10 @@ class CardsOverviewScreen extends StatelessWidget {
         ),
         actions: [
           TextButton(
-            onPressed: () => flutterTts.speak(card.en),
+            onPressed: () async {
+              await flutterTts.setLanguage(langConfig.ttsLocale);
+              await flutterTts.speak(card.en);
+            },
             child: const Text('🔊 Přehrát'),
           ),
           TextButton(
