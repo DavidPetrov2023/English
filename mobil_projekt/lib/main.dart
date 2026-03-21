@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 enum AppLanguage { en, de }
 
@@ -991,47 +992,173 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _addNewCard() async {
     final enController = TextEditingController();
     final czController = TextEditingController();
+    final speech = stt.SpeechToText();
 
     final result = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF16213E),
-        title: const Text('Přidat kartičku'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: enController,
-              decoration: InputDecoration(
-                labelText: langConfig.addCardLabel,
-                hintText: langConfig.addCardHint,
-                border: const OutlineInputBorder(),
+      builder: (context) {
+        bool isListeningEn = false;
+        bool isListeningCz = false;
+
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            bool isTranslating = false;
+
+            Future<String?> translateText(String text, String from, String to) async {
+              try {
+                final uri = Uri.parse(
+                  'https://api.mymemory.translated.net/get?q=${Uri.encodeComponent(text)}&langpair=$from|$to',
+                );
+                final httpClient = HttpClient();
+                final request = await httpClient.getUrl(uri);
+                final response = await request.close();
+                final body = await response.transform(const Utf8Decoder()).join();
+                final data = json.decode(body);
+                if (data['responseStatus'] == 200) {
+                  return data['responseData']['translatedText'] as String;
+                }
+              } catch (_) {}
+              return null;
+            }
+
+            Future<void> toggleListening(TextEditingController controller, String localeId, bool isEn) async {
+              if (isEn ? isListeningEn : isListeningCz) {
+                await speech.stop();
+                setDialogState(() {
+                  if (isEn) {
+                    isListeningEn = false;
+                  } else {
+                    isListeningCz = false;
+                  }
+                });
+                return;
+              }
+
+              bool available = await speech.initialize(
+                onError: (error) {
+                  setDialogState(() {
+                    isListeningEn = false;
+                    isListeningCz = false;
+                  });
+                },
+              );
+
+              if (available) {
+                setDialogState(() {
+                  if (isEn) {
+                    isListeningEn = true;
+                  } else {
+                    isListeningCz = true;
+                  }
+                });
+                await speech.listen(
+                  onResult: (result) {
+                    setDialogState(() {
+                      controller.text = result.recognizedWords;
+                      controller.selection = TextSelection.fromPosition(
+                        TextPosition(offset: controller.text.length),
+                      );
+                      if (result.finalResult) {
+                        if (isEn) {
+                          isListeningEn = false;
+                        } else {
+                          isListeningCz = false;
+                          if (result.recognizedWords.isNotEmpty && enController.text.isEmpty) {
+                            isTranslating = true;
+                            translateText(result.recognizedWords, 'cs', langConfig.code).then((translated) {
+                              if (translated != null) {
+                                setDialogState(() {
+                                  enController.text = translated;
+                                  enController.selection = TextSelection.fromPosition(
+                                    TextPosition(offset: enController.text.length),
+                                  );
+                                  isTranslating = false;
+                                });
+                              } else {
+                                setDialogState(() {
+                                  isTranslating = false;
+                                });
+                              }
+                            });
+                          }
+                        }
+                      }
+                    });
+                  },
+                  localeId: localeId,
+                );
+              }
+            }
+
+            return AlertDialog(
+              backgroundColor: const Color(0xFF16213E),
+              title: const Text('Přidat kartičku'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: enController,
+                    decoration: InputDecoration(
+                      labelText: langConfig.addCardLabel,
+                      hintText: langConfig.addCardHint,
+                      border: const OutlineInputBorder(),
+                      suffixIcon: isTranslating
+                        ? const Padding(
+                            padding: EdgeInsets.all(12),
+                            child: SizedBox(
+                              width: 20, height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          )
+                        : IconButton(
+                            icon: Icon(
+                              isListeningEn ? Icons.mic : Icons.mic_none,
+                              color: isListeningEn ? Colors.red : Colors.grey,
+                            ),
+                            onPressed: () => toggleListening(enController, langConfig.ttsLocale, true),
+                          ),
+                    ),
+                    maxLines: 2,
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: czController,
+                    decoration: InputDecoration(
+                      labelText: 'Česky',
+                      hintText: 'Ahoj, jak se máš?',
+                      border: const OutlineInputBorder(),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          isListeningCz ? Icons.mic : Icons.mic_none,
+                          color: isListeningCz ? Colors.red : Colors.grey,
+                        ),
+                        onPressed: () => toggleListening(czController, 'cs-CZ', false),
+                      ),
+                    ),
+                    maxLines: 2,
+                  ),
+                ],
               ),
-              maxLines: 2,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: czController,
-              decoration: const InputDecoration(
-                labelText: 'Česky',
-                hintText: 'Ahoj, jak se máš?',
-                border: OutlineInputBorder(),
-              ),
-              maxLines: 2,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Zrušit'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Přidat'),
-          ),
-        ],
-      ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    speech.stop();
+                    Navigator.pop(context, false);
+                  },
+                  child: const Text('Zrušit'),
+                ),
+                TextButton(
+                  onPressed: () {
+                    speech.stop();
+                    Navigator.pop(context, true);
+                  },
+                  child: const Text('Přidat'),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
 
     if (result == true && enController.text.isNotEmpty && czController.text.isNotEmpty) {
