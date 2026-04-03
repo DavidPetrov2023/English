@@ -801,7 +801,7 @@ class _HomeScreenState extends State<HomeScreen> {
         backgroundColor: const Color(0xFF16213E),
         title: const Text('O aplikaci'),
         content: Text(
-          'LangCards v1.3.1\n\n'
+          'LangCards v1.4.1\n\n'
           'Aplikace pro učení cizích jazyků pomocí kartiček.\n\n'
           'Funkce:\n'
           '• Vlastní kartičky\n'
@@ -1015,7 +1015,19 @@ class _HomeScreenState extends State<HomeScreen> {
                 final body = await response.transform(const Utf8Decoder()).join();
                 final data = json.decode(body);
                 if (data['responseStatus'] == 200) {
-                  return data['responseData']['translatedText'] as String;
+                  String result = data['responseData']['translatedText'] as String;
+                  result = result
+                      .replaceAll('&quot;', '')
+                      .replaceAll('&amp;', '&')
+                      .replaceAll('&lt;', '<')
+                      .replaceAll('&gt;', '>')
+                      .replaceAll('&#39;', '')
+                      .trim();
+                  // Remove any stray quotes/apostrophes at the very end or start
+                  result = result.replaceAll(RegExp(r'''["""„''\u2018\u2019\u201C\u201D\u201E]$'''), '');
+                  result = result.replaceAll(RegExp(r'''^["""„''\u2018\u2019\u201C\u201D\u201E]'''), '');
+                  result = result.trim();
+                  return result;
                 }
               } catch (_) {}
               return null;
@@ -1061,24 +1073,36 @@ class _HomeScreenState extends State<HomeScreen> {
                       if (result.finalResult) {
                         if (isEn) {
                           isListeningEn = false;
+                          // Auto-translate EN/DE → CZ
+                          if (result.recognizedWords.isNotEmpty && czController.text.isEmpty) {
+                            isTranslating = true;
+                            translateText(result.recognizedWords, langConfig.code, 'cs').then((translated) {
+                              setDialogState(() {
+                                if (translated != null) {
+                                  czController.text = translated;
+                                  czController.selection = TextSelection.fromPosition(
+                                    TextPosition(offset: czController.text.length),
+                                  );
+                                }
+                                isTranslating = false;
+                              });
+                            });
+                          }
                         } else {
                           isListeningCz = false;
+                          // Auto-translate CZ → EN/DE
                           if (result.recognizedWords.isNotEmpty && enController.text.isEmpty) {
                             isTranslating = true;
                             translateText(result.recognizedWords, 'cs', langConfig.code).then((translated) {
-                              if (translated != null) {
-                                setDialogState(() {
+                              setDialogState(() {
+                                if (translated != null) {
                                   enController.text = translated;
                                   enController.selection = TextSelection.fromPosition(
                                     TextPosition(offset: enController.text.length),
                                   );
-                                  isTranslating = false;
-                                });
-                              } else {
-                                setDialogState(() {
-                                  isTranslating = false;
-                                });
-                              }
+                                }
+                                isTranslating = false;
+                              });
                             });
                           }
                         }
