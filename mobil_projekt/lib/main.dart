@@ -313,6 +313,7 @@ class _HomeScreenState extends State<HomeScreen> {
           .toList();
     } catch (e) {
       davidCards = [];
+      debugPrint('Error loading David cards: $e');
     }
 
     // Load user's own cards
