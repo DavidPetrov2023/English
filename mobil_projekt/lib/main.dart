@@ -776,6 +776,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 await prefs.remove('gh_repo');
                 await prefs.remove('gh_token');
                 await prefs.remove('gh_username');
+                await prefs.remove(_nemeckyUsmevUnlockedKey);
                 if (context.mounted) Navigator.pop(context, true);
               },
               child: const Text('Odhlásit', style: TextStyle(color: Colors.red)),
@@ -1192,13 +1193,31 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // Password for "Němčina s úsměvem" section
-  static const String _nemeckyUsmevPassword = 'kurz2026';
   static const String _nemeckyUsmevUnlockedKey = 'nemecky_usmev_unlocked';
+
+  Future<bool> _verifyGithubAccess() async {
+    final repo = prefs.getString('gh_repo') ?? '';
+    final token = prefs.getString('gh_token') ?? '';
+    if (repo.isEmpty || token.isEmpty) return false;
+    try {
+      final url = Uri.parse('https://api.github.com/repos/$repo');
+      final req = await HttpClient().getUrl(url);
+      req.headers.set('Authorization', 'Bearer $token');
+      req.headers.set('Accept', 'application/vnd.github+json');
+      final res = await req.close();
+      await res.drain();
+      return res.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
 
   Future<void> _openNemeckySUsmevem() async {
     final unlocked = prefs.getBool(_nemeckyUsmevUnlockedKey) ?? false;
-    if (!unlocked) {
+    final hasGh = (prefs.getString('gh_token') ?? '').isNotEmpty &&
+        (prefs.getString('gh_username') ?? '').isNotEmpty;
+
+    if (!unlocked || !hasGh) {
       // Show disclaimer first
       final agreed = await showDialog<bool>(
         context: context,
@@ -1211,6 +1230,8 @@ class _HomeScreenState extends State<HomeScreen> {
             'Obsah je určen výhradně pro osobní studium v rámci naší soukromé '
             'výukové skupiny. Není povoleno volné šíření, kopírování nebo '
             'distribuce mimo tuto skupinu.\n\n'
+            'Pro vstup je potřeba registrace přes GitHub - každý uživatel zadá své '
+            'jméno a sdílený přístupový token od správce skupiny.\n\n'
             'Autor aplikace nenese odpovědnost za případné porušení autorských '
             'práv třetími osobami.',
             style: TextStyle(fontSize: 14),
@@ -1229,57 +1250,24 @@ class _HomeScreenState extends State<HomeScreen> {
       );
       if (agreed != true) return;
 
-      // Ask for password
+      // Show GitHub registration
       if (!mounted) return;
-      final controller = TextEditingController();
-      String? error;
-      final passwordOk = await showDialog<bool>(
-        context: context,
-        builder: (context) => StatefulBuilder(
-          builder: (context, setDialogState) => AlertDialog(
-            backgroundColor: const Color(0xFF16213E),
-            title: const Text('Heslo'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: controller,
-                  obscureText: true,
-                  autofocus: true,
-                  decoration: InputDecoration(
-                    labelText: 'Zadejte heslo',
-                    errorText: error,
-                  ),
-                  onSubmitted: (val) {
-                    if (val == _nemeckyUsmevPassword) {
-                      Navigator.pop(context, true);
-                    } else {
-                      setDialogState(() => error = 'Nesprávné heslo');
-                    }
-                  },
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Zrušit'),
-              ),
-              TextButton(
-                onPressed: () {
-                  if (controller.text == _nemeckyUsmevPassword) {
-                    Navigator.pop(context, true);
-                  } else {
-                    setDialogState(() => error = 'Nesprávné heslo');
-                  }
-                },
-                child: const Text('OK'),
-              ),
-            ],
-          ),
-        ),
+      await _showGitHubSyncSettings();
+
+      // Verify access works
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ověřuji přístup k repu...')),
       );
-      if (passwordOk != true) return;
+      final ok = await _verifyGithubAccess();
+      if (!ok) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Přístup zamítnut. Zkontrolujte token a repo.')),
+          );
+        }
+        return;
+      }
       await prefs.setBool(_nemeckyUsmevUnlockedKey, true);
     }
 
