@@ -1213,11 +1213,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _openNemeckySUsmevem() async {
-    final unlocked = prefs.getBool(_nemeckyUsmevUnlockedKey) ?? false;
     final hasGh = (prefs.getString('gh_token') ?? '').isNotEmpty &&
         (prefs.getString('gh_username') ?? '').isNotEmpty;
-
-    if (!unlocked || !hasGh) {
+    // Require GitHub registration regardless of past unlock
+    if (!hasGh) {
       // Show disclaimer first
       final agreed = await showDialog<bool>(
         context: context,
