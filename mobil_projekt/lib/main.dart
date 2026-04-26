@@ -717,6 +717,289 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  // ===== GitHub Sync =====
+
+  Future<void> _showGitHubSyncSettings() async {
+    final repoController = TextEditingController(text: prefs.getString('gh_repo') ?? '');
+    final tokenController = TextEditingController(text: prefs.getString('gh_token') ?? '');
+    final usernameController = TextEditingController(text: prefs.getString('gh_username') ?? '');
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF16213E),
+        title: const Text('GitHub synchronizace'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: repoController,
+                decoration: const InputDecoration(
+                  labelText: 'Repo (owner/repo)',
+                  hintText: 'DavidPetrov2023/langcards-backups',
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: tokenController,
+                decoration: const InputDecoration(
+                  labelText: 'Personal Access Token',
+                  hintText: 'github_pat_...',
+                ),
+                obscureText: true,
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: usernameController,
+                decoration: const InputDecoration(
+                  labelText: 'Vaše jméno (název souboru)',
+                  hintText: 'kristyna',
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Token musí mít Contents: Read and write na zvoleném repu.',
+                style: TextStyle(fontSize: 11, color: Colors.grey),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Zrušit'),
+          ),
+          if (prefs.getString('gh_token')?.isNotEmpty == true)
+            TextButton(
+              onPressed: () async {
+                await prefs.remove('gh_repo');
+                await prefs.remove('gh_token');
+                await prefs.remove('gh_username');
+                if (context.mounted) Navigator.pop(context, true);
+              },
+              child: const Text('Odhlásit', style: TextStyle(color: Colors.red)),
+            ),
+          TextButton(
+            onPressed: () async {
+              await prefs.setString('gh_repo', repoController.text.trim());
+              await prefs.setString('gh_token', tokenController.text.trim());
+              await prefs.setString('gh_username', usernameController.text.trim().toLowerCase());
+              if (context.mounted) Navigator.pop(context, true);
+            },
+            child: const Text('Uložit'),
+          ),
+        ],
+      ),
+    );
+    if (saved == true && mounted) setState(() {});
+  }
+
+  String _ghBackupJson() {
+    final Map<String, dynamic> allLangs = {};
+    for (final lang in AppLanguage.values) {
+      final lc = LanguageConfig(lang);
+      final progJson = prefs.getString(lc.progressKey);
+      final cardsJson = prefs.getString(lc.myCardsKey);
+      if (progJson != null || cardsJson != null) {
+        allLangs[lc.code] = {
+          'progress': progJson != null ? json.decode(progJson) : {},
+          'myCards': cardsJson != null ? json.decode(cardsJson) : [],
+        };
+      }
+    }
+    return json.encode({
+      'version': '3.0',
+      'date': DateTime.now().toIso8601String(),
+      'languages': allLangs,
+    });
+  }
+
+  Future<void> _githubSync() async {
+    final repo = prefs.getString('gh_repo') ?? '';
+    final token = prefs.getString('gh_token') ?? '';
+    final username = prefs.getString('gh_username') ?? '';
+    if (repo.isEmpty || token.isEmpty || username.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Nejdřív nastavte GitHub sync')),
+      );
+      return;
+    }
+
+    final path = '$username.json';
+    final url = Uri.parse('https://api.github.com/repos/$repo/contents/$path');
+
+    try {
+      // First, check if file exists to get its SHA (required for update)
+      String? sha;
+      final getReq = await HttpClient().getUrl(url);
+      getReq.headers.set('Authorization', 'Bearer $token');
+      getReq.headers.set('Accept', 'application/vnd.github+json');
+      final getRes = await getReq.close();
+      if (getRes.statusCode == 200) {
+        final body = await getRes.transform(const Utf8Decoder()).join();
+        final data = json.decode(body);
+        sha = data['sha'] as String?;
+      }
+
+      // Upload (create or update)
+      final content = _ghBackupJson();
+      final encoded = base64Encode(utf8.encode(content));
+
+      final putReq = await HttpClient().putUrl(url);
+      putReq.headers.set('Authorization', 'Bearer $token');
+      putReq.headers.set('Accept', 'application/vnd.github+json');
+      putReq.headers.contentType = ContentType.json;
+      final payload = {
+        'message': 'LangCards backup ${DateTime.now().toIso8601String()}',
+        'content': encoded,
+        if (sha != null) 'sha': sha,
+      };
+      putReq.write(json.encode(payload));
+      final putRes = await putReq.close();
+      final putBody = await putRes.transform(const Utf8Decoder()).join();
+
+      if (putRes.statusCode == 200 || putRes.statusCode == 201) {
+        // Update backup tracking
+        lastBackupDate = DateTime.now();
+        hasUnsavedProgress = false;
+        for (final lang in AppLanguage.values) {
+          final lc = LanguageConfig(lang);
+          await prefs.setString(lc.lastBackupDateKey, lastBackupDate!.toIso8601String());
+          await prefs.setBool(lc.hasUnsavedProgressKey, false);
+        }
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Záloha nahrána na GitHub jako $path')),
+          );
+          setState(() {});
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Chyba ${putRes.statusCode}: $putBody')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Chyba: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _githubRestore() async {
+    final repo = prefs.getString('gh_repo') ?? '';
+    final token = prefs.getString('gh_token') ?? '';
+    final username = prefs.getString('gh_username') ?? '';
+    if (repo.isEmpty || token.isEmpty || username.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Nejdřív nastavte GitHub sync')),
+      );
+      return;
+    }
+
+    // Confirm overwrite
+    if (progress.isNotEmpty || myCards.isNotEmpty) {
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: const Color(0xFF16213E),
+          title: const Text('Přepsat stávající data?'),
+          content: Text(
+            'Stáhnout zálohu pro $username z GitHubu a přepsat lokální data?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Zrušit'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Přepsat', style: TextStyle(color: Colors.orange)),
+            ),
+          ],
+        ),
+      );
+      if (confirm != true) return;
+    }
+
+    final path = '$username.json';
+    final url = Uri.parse('https://api.github.com/repos/$repo/contents/$path');
+
+    try {
+      final req = await HttpClient().getUrl(url);
+      req.headers.set('Authorization', 'Bearer $token');
+      req.headers.set('Accept', 'application/vnd.github+json');
+      final res = await req.close();
+      if (res.statusCode != 200) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Záloha nenalezena (${res.statusCode})')),
+          );
+        }
+        return;
+      }
+      final body = await res.transform(const Utf8Decoder()).join();
+      final data = json.decode(body);
+      final base64Content = (data['content'] as String).replaceAll('\n', '');
+      final decoded = utf8.decode(base64Decode(base64Content));
+      final backup = json.decode(decoded);
+
+      final backupDate = backup['date'] != null
+          ? (DateTime.tryParse(backup['date']) ?? DateTime.now())
+          : DateTime.now();
+
+      if (backup['version'] == '3.0' && backup['languages'] != null) {
+        final languages = backup['languages'] as Map<String, dynamic>;
+        for (final entry in languages.entries) {
+          final lc = LanguageConfig.fromCode(entry.key);
+          if (lc == null) continue;
+          final langData = entry.value as Map<String, dynamic>;
+          if (langData['progress'] != null) {
+            await prefs.setString(lc.progressKey, json.encode(langData['progress']));
+          }
+          if (langData['myCards'] != null) {
+            await prefs.setString(lc.myCardsKey, json.encode(langData['myCards']));
+          }
+          await prefs.setString(lc.lastBackupDateKey, backupDate.toIso8601String());
+          await prefs.setBool(lc.hasUnsavedProgressKey, false);
+        }
+
+        // Reload current language
+        final progJson = prefs.getString(langConfig.progressKey);
+        progress.clear();
+        if (progJson != null) {
+          (json.decode(progJson) as Map<String, dynamic>).forEach((k, v) {
+            progress[k] = CardProgress.fromJson(v);
+          });
+        }
+        final cardsJson = prefs.getString(langConfig.myCardsKey);
+        myCards = cardsJson != null
+            ? (json.decode(cardsJson) as List).map((c) => FlashCard.fromJson(c)).toList()
+            : [];
+      }
+
+      lastBackupDate = backupDate;
+      hasUnsavedProgress = false;
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Záloha pro $username obnovena z GitHubu')),
+        );
+        setState(() {});
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Chyba: $e')),
+        );
+      }
+    }
+  }
+
   void _showSettings() {
     showModalBottomSheet(
       context: context,
@@ -779,6 +1062,39 @@ class _HomeScreenState extends State<HomeScreen> {
                 _restoreFromBackup();
               },
             ),
+            const Divider(color: Colors.grey),
+            ListTile(
+              leading: const Icon(Icons.cloud_sync, color: Color(0xFF00D9FF)),
+              title: const Text('GitHub sync'),
+              subtitle: Text(prefs.getString('gh_username')?.isNotEmpty == true
+                  ? 'Přihlášen jako ${prefs.getString('gh_username')}'
+                  : 'Nastavit synchronizaci'),
+              onTap: () {
+                Navigator.pop(context);
+                _showGitHubSyncSettings();
+              },
+            ),
+            if (prefs.getString('gh_token')?.isNotEmpty == true) ...[
+              ListTile(
+                leading: const Icon(Icons.cloud_upload, color: Color(0xFF00FF88)),
+                title: const Text('Nahrát na GitHub'),
+                subtitle: const Text('Uloží zálohu do repa'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _githubSync();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.cloud_download, color: Color(0xFFFFD700)),
+                title: const Text('Stáhnout z GitHubu'),
+                subtitle: const Text('Načte zálohu z repa'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _githubRestore();
+                },
+              ),
+            ],
+            const Divider(color: Colors.grey),
             ListTile(
               leading: const Icon(Icons.info_outline, color: Colors.grey),
               title: const Text('O aplikaci'),
