@@ -1339,7 +1339,20 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('LangCards'),
+        title: Builder(builder: (_) {
+          final ghUser = prefs.getString('gh_username') ?? '';
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('LangCards', style: TextStyle(fontSize: 18)),
+              if (ghUser.isNotEmpty)
+                Text(
+                  '☁️ $ghUser',
+                  style: const TextStyle(fontSize: 11, color: Color(0xFF00D9FF)),
+                ),
+            ],
+          );
+        }),
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
