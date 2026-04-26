@@ -1888,18 +1888,26 @@ class _LearningScreenState extends State<LearningScreen> {
 
     List<dynamic> voices = await flutterTts.getVoices;
     final langCode = widget.langConfig.code;
-    var preferredVoices = voices.where((v) =>
-      v['locale'].toString().startsWith(langCode) &&
-      (v['name'].toString().toLowerCase().contains('female') ||
-      v['name'].toString().toLowerCase().contains('samantha') ||
-      v['name'].toString().toLowerCase().contains('google') ||
-      v['name'].toString().contains('en-us-x-sfg'))
+    final localeMatches = voices.where((v) =>
+      v['locale'].toString().toLowerCase().startsWith(langCode)
     ).toList();
 
-    if (preferredVoices.isNotEmpty) {
+    // Prefer high-quality voices, fall back to any voice with matching locale
+    var preferredVoices = localeMatches.where((v) =>
+      v['name'].toString().toLowerCase().contains('female') ||
+      v['name'].toString().toLowerCase().contains('samantha') ||
+      v['name'].toString().toLowerCase().contains('google') ||
+      v['name'].toString().contains('en-us-x-sfg')
+    ).toList();
+
+    final voiceToUse = preferredVoices.isNotEmpty
+        ? preferredVoices.first
+        : (localeMatches.isNotEmpty ? localeMatches.first : null);
+
+    if (voiceToUse != null) {
       await flutterTts.setVoice({
-        "name": preferredVoices.first['name'],
-        "locale": preferredVoices.first['locale']
+        "name": voiceToUse['name'],
+        "locale": voiceToUse['locale']
       });
     }
   }
@@ -1953,15 +1961,38 @@ class _LearningScreenState extends State<LearningScreen> {
     });
   }
 
+  Future<void> _setVoiceForLocale(String locale) async {
+    final shortCode = locale.split('-').first.toLowerCase();
+    try {
+      final voices = await flutterTts.getVoices;
+      final matches = (voices as List).where((v) =>
+        v['locale'].toString().toLowerCase().startsWith(shortCode)
+      ).toList();
+      if (matches.isNotEmpty) {
+        // Prefer Google/female/high-quality voices
+        final preferred = matches.where((v) =>
+          v['name'].toString().toLowerCase().contains('google') ||
+          v['name'].toString().toLowerCase().contains('female')
+        ).toList();
+        final pick = preferred.isNotEmpty ? preferred.first : matches.first;
+        await flutterTts.setVoice({
+          "name": pick['name'],
+          "locale": pick['locale']
+        });
+      }
+    } catch (_) {}
+    await flutterTts.setLanguage(locale);
+  }
+
   Future<void> _speak() async {
     if (currentCard != null) {
       if (isEnToCz) {
         // Vidím cizí jazyk, chci slyšet CZ (odpověď)
-        await flutterTts.setLanguage(widget.langConfig.nativeTtsLocale);
+        await _setVoiceForLocale(widget.langConfig.nativeTtsLocale);
         await flutterTts.speak(currentCard!.cz);
       } else {
         // Vidím CZ, chci slyšet cizí jazyk (odpověď)
-        await flutterTts.setLanguage(widget.langConfig.ttsLocale);
+        await _setVoiceForLocale(widget.langConfig.ttsLocale);
         await flutterTts.speak(currentCard!.en);
       }
     }
