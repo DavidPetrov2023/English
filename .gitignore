@@ -46,3 +46,8 @@ nul
 
 # Temp files
 tmpclaude-*
+
+# Large source PDFs (do not commit)
+*.pdf
+test_page*.png
+

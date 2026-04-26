@@ -876,6 +876,140 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // Password for "Němčina s úsměvem" section
+  static const String _nemeckyUsmevPassword = 'kurz2026';
+  static const String _nemeckyUsmevUnlockedKey = 'nemecky_usmev_unlocked';
+
+  Future<void> _openNemeckySUsmevem() async {
+    final unlocked = prefs.getBool(_nemeckyUsmevUnlockedKey) ?? false;
+    if (!unlocked) {
+      // Show disclaimer first
+      final agreed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: const Color(0xFF16213E),
+          title: const Text('Upozornění'),
+          content: const Text(
+            'Tato sekce obsahuje slovní zásobu z učebnice "Německy s úsměvem - nově" '
+            '(Fraus 2003).\n\n'
+            'Obsah je určen výhradně pro osobní studium v rámci naší soukromé '
+            'výukové skupiny. Není povoleno volné šíření, kopírování nebo '
+            'distribuce mimo tuto skupinu.\n\n'
+            'Autor aplikace nenese odpovědnost za případné porušení autorských '
+            'práv třetími osobami.',
+            style: TextStyle(fontSize: 14),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Zrušit'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Souhlasím', style: TextStyle(color: Colors.orange)),
+            ),
+          ],
+        ),
+      );
+      if (agreed != true) return;
+
+      // Ask for password
+      if (!mounted) return;
+      final controller = TextEditingController();
+      String? error;
+      final passwordOk = await showDialog<bool>(
+        context: context,
+        builder: (context) => StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            backgroundColor: const Color(0xFF16213E),
+            title: const Text('Heslo'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: controller,
+                  obscureText: true,
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    labelText: 'Zadejte heslo',
+                    errorText: error,
+                  ),
+                  onSubmitted: (val) {
+                    if (val == _nemeckyUsmevPassword) {
+                      Navigator.pop(context, true);
+                    } else {
+                      setDialogState(() => error = 'Nesprávné heslo');
+                    }
+                  },
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Zrušit'),
+              ),
+              TextButton(
+                onPressed: () {
+                  if (controller.text == _nemeckyUsmevPassword) {
+                    Navigator.pop(context, true);
+                  } else {
+                    setDialogState(() => error = 'Nesprávné heslo');
+                  }
+                },
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        ),
+      );
+      if (passwordOk != true) return;
+      await prefs.setBool(_nemeckyUsmevUnlockedKey, true);
+    }
+
+    if (!mounted) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => NemeckySUsmevemScreen(
+          progress: progress,
+          onSaveProgress: _saveProgress,
+          langConfig: langConfig,
+        ),
+      ),
+    ).then((_) => setState(() {}));
+  }
+
+  Widget _buildNemeckySUsmevemCard() {
+    final unlocked = prefs.getBool(_nemeckyUsmevUnlockedKey) ?? false;
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            const Color(0xFFFFD700).withValues(alpha: 0.15),
+            const Color(0xFFFFA500).withValues(alpha: 0.1),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFFFD700).withValues(alpha: 0.4)),
+      ),
+      child: ListTile(
+        leading: Icon(
+          unlocked ? Icons.menu_book : Icons.lock_outline,
+          color: const Color(0xFFFFD700),
+          size: 32,
+        ),
+        title: const Text(
+          '😊 Němčina s úsměvem',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        subtitle: Text(unlocked ? 'Slovní zásoba podle lekcí' : 'Chráněno heslem'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: _openNemeckySUsmevem,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (isLoading) {
@@ -935,6 +1069,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 onEditName: _editMyCardsName,
                 onAddCard: _addNewCard,
               ),
+
+              if (langConfig.language == AppLanguage.de) ...[
+                const SizedBox(height: 16),
+                _buildNemeckySUsmevemCard(),
+              ],
 
               const SizedBox(height: 24),
 
@@ -2273,6 +2412,180 @@ class CardsOverviewScreen extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ===== Němčina s úsměvem =====
+
+class NemeckySUsmevemLesson {
+  final int number;
+  final String title;
+  final String file;
+  NemeckySUsmevemLesson({required this.number, required this.title, required this.file});
+}
+
+class NemeckySUsmevemScreen extends StatefulWidget {
+  final Map<String, CardProgress> progress;
+  final Function() onSaveProgress;
+  final LanguageConfig langConfig;
+
+  const NemeckySUsmevemScreen({
+    super.key,
+    required this.progress,
+    required this.onSaveProgress,
+    required this.langConfig,
+  });
+
+  @override
+  State<NemeckySUsmevemScreen> createState() => _NemeckySUsmevemScreenState();
+}
+
+class _NemeckySUsmevemScreenState extends State<NemeckySUsmevemScreen> {
+  List<NemeckySUsmevemLesson> lessons = [];
+  Set<int> selectedLessons = {};
+  bool isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadManifest();
+  }
+
+  Future<void> _loadManifest() async {
+    try {
+      final manifestStr = await rootBundle.loadString('assets/nemecky_s_usmevem/manifest.json');
+      final manifest = json.decode(manifestStr) as Map<String, dynamic>;
+      final list = manifest['lessons'] as List;
+      setState(() {
+        lessons = list.map((l) => NemeckySUsmevemLesson(
+          number: l['number'] as int,
+          title: l['title'] as String,
+          file: l['file'] as String,
+        )).toList();
+        isLoading = false;
+      });
+    } catch (e) {
+      setState(() => isLoading = false);
+    }
+  }
+
+  Future<List<FlashCard>> _loadSelectedCards() async {
+    final List<FlashCard> all = [];
+    for (final lesson in lessons) {
+      if (!selectedLessons.contains(lesson.number)) continue;
+      try {
+        final str = await rootBundle.loadString('assets/nemecky_s_usmevem/${lesson.file}');
+        final data = json.decode(str) as Map<String, dynamic>;
+        final cards = data['cards'] as List? ?? [];
+        for (final c in cards) {
+          all.add(FlashCard(
+            en: c['de'] as String,
+            cz: c['cz'] as String,
+            category: 'Lekce ${lesson.number}',
+          ));
+        }
+        final vazby = data['vazby'] as List? ?? [];
+        for (final v in vazby) {
+          all.add(FlashCard(
+            en: v['de'] as String,
+            cz: v['cz'] as String,
+            category: 'Lekce ${lesson.number} - vazby',
+          ));
+        }
+      } catch (_) {}
+    }
+    return all;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Němčina s úsměvem'),
+      ),
+      body: isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.orange.withValues(alpha: 0.5)),
+                    ),
+                    child: const Text(
+                      '⚠️ Obsah pochází z učebnice "Německy s úsměvem - nově" '
+                      '(Fraus 2003). Použito pouze pro osobní studium v rámci '
+                      'soukromé skupiny. Není povoleno volné šíření.',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: lessons.length,
+                    itemBuilder: (context, index) {
+                      final lesson = lessons[index];
+                      final isSelected = selectedLessons.contains(lesson.number);
+                      return CheckboxListTile(
+                        value: isSelected,
+                        onChanged: (val) {
+                          setState(() {
+                            if (val == true) {
+                              selectedLessons.add(lesson.number);
+                            } else {
+                              selectedLessons.remove(lesson.number);
+                            }
+                          });
+                        },
+                        title: Text('Lekce ${lesson.number}: ${lesson.title}'),
+                      );
+                    },
+                  ),
+                ),
+                if (selectedLessons.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        icon: const Icon(Icons.school),
+                        label: Text('Učit se (${selectedLessons.length} ${selectedLessons.length == 1 ? "lekce" : "lekcí"})'),
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          backgroundColor: const Color(0xFF00FF88),
+                          foregroundColor: Colors.black,
+                        ),
+                        onPressed: () async {
+                          final cards = await _loadSelectedCards();
+                          if (cards.isEmpty) return;
+                          if (!mounted) return;
+                          final selectedNumbers = selectedLessons.toList()..sort();
+                          final title = selectedNumbers.length == 1
+                              ? 'Lekce ${selectedNumbers.first}'
+                              : 'Lekce ${selectedNumbers.join(", ")}';
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => LearningScreen(
+                                title: title,
+                                cards: cards,
+                                progress: widget.progress,
+                                onSaveProgress: widget.onSaveProgress,
+                                langConfig: widget.langConfig,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+              ],
+            ),
     );
   }
 }

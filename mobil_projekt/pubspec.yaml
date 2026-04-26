@@ -85,6 +85,8 @@ flutter:
     - assets/grammar_de_B1.json
     - assets/grammar_de_B2.json
     - assets/grammar_de_C1.json
+    - assets/nemecky_s_usmevem/manifest.json
+    - assets/nemecky_s_usmevem/L01.json
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
