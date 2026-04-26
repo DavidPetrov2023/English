@@ -1976,9 +1976,12 @@ class _LearningScreenState extends State<LearningScreen> {
         ).toList();
         final pick = preferred.isNotEmpty ? preferred.first : matches.first;
         await flutterTts.setVoice({
-          "name": pick['name'],
-          "locale": pick['locale']
+          "name": pick['name'].toString(),
+          "locale": pick['locale'].toString()
         });
+      } else {
+        // No matching voice - reset by passing non-existent voice (clears stale voice)
+        await flutterTts.setVoice({"name": "__none__", "locale": locale});
       }
     } catch (_) {}
     await flutterTts.setLanguage(locale);
