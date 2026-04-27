@@ -720,77 +720,77 @@ class _HomeScreenState extends State<HomeScreen> {
   // ===== GitHub Sync =====
 
   Future<void> _showGitHubSyncSettings() async {
-    final repoController = TextEditingController(text: prefs.getString('gh_repo') ?? '');
-    final tokenController = TextEditingController(text: prefs.getString('gh_token') ?? '');
-    final usernameController = TextEditingController(text: prefs.getString('gh_username') ?? '');
+    final emailController = TextEditingController(text: prefs.getString('gh_email') ?? '');
+    final nicknameController = TextEditingController(text: prefs.getString('gh_username') ?? '');
+    String? error;
 
     final saved = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF16213E),
-        title: const Text('GitHub synchronizace'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: repoController,
-                decoration: const InputDecoration(
-                  labelText: 'Repo (owner/repo)',
-                  hintText: 'DavidPetrov2023/langcards-backups',
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: const Color(0xFF16213E),
+          title: const Text('Registrace'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: emailController,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: InputDecoration(
+                    labelText: 'Email',
+                    hintText: 'jmeno@email.cz',
+                    errorText: error,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: tokenController,
-                decoration: const InputDecoration(
-                  labelText: 'Personal Access Token',
-                  hintText: 'github_pat_...',
+                const SizedBox(height: 12),
+                TextField(
+                  controller: nicknameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Přezdívka (nepovinné)',
+                    hintText: 'Kristýna',
+                  ),
                 ),
-                obscureText: true,
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: usernameController,
-                decoration: const InputDecoration(
-                  labelText: 'Vaše jméno (název souboru)',
-                  hintText: 'kristyna',
+                const SizedBox(height: 12),
+                const Text(
+                  'Email slouží pro pozdější obnovu účtu. Záloha se ukládá do '
+                  'soukromého repa skupiny.',
+                  style: TextStyle(fontSize: 11, color: Colors.grey),
                 ),
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                'Token musí mít Contents: Read and write na zvoleném repu.',
-                style: TextStyle(fontSize: 11, color: Colors.grey),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Zrušit'),
-          ),
-          if (prefs.getString('gh_token')?.isNotEmpty == true)
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Zrušit'),
+            ),
+            if ((prefs.getString('gh_email') ?? '').isNotEmpty)
+              TextButton(
+                onPressed: () async {
+                  await prefs.remove('gh_email');
+                  await prefs.remove('gh_username');
+                  await prefs.remove(_nemeckyUsmevUnlockedKey);
+                  if (context.mounted) Navigator.pop(context, true);
+                },
+                child: const Text('Odhlásit', style: TextStyle(color: Colors.red)),
+              ),
             TextButton(
               onPressed: () async {
-                await prefs.remove('gh_repo');
-                await prefs.remove('gh_token');
-                await prefs.remove('gh_username');
-                await prefs.remove(_nemeckyUsmevUnlockedKey);
+                final email = emailController.text.trim().toLowerCase();
+                if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email)) {
+                  setDialogState(() => error = 'Zadejte platný email');
+                  return;
+                }
+                final nickname = nicknameController.text.trim();
+                await prefs.setString('gh_email', email);
+                await prefs.setString('gh_username', nickname.isNotEmpty ? nickname : email);
                 if (context.mounted) Navigator.pop(context, true);
               },
-              child: const Text('Odhlásit', style: TextStyle(color: Colors.red)),
+              child: const Text('Uložit'),
             ),
-          TextButton(
-            onPressed: () async {
-              await prefs.setString('gh_repo', repoController.text.trim());
-              await prefs.setString('gh_token', tokenController.text.trim());
-              await prefs.setString('gh_username', usernameController.text.trim().toLowerCase());
-              if (context.mounted) Navigator.pop(context, true);
-            },
-            child: const Text('Uložit'),
-          ),
-        ],
+          ],
+        ),
       ),
     );
     if (saved == true && mounted) setState(() {});
@@ -817,18 +817,18 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _githubSync() async {
-    final repo = prefs.getString('gh_repo') ?? '';
-    final token = prefs.getString('gh_token') ?? '';
-    final username = prefs.getString('gh_username') ?? '';
-    if (repo.isEmpty || token.isEmpty || username.isEmpty) {
+    final email = prefs.getString('gh_email') ?? '';
+    if (email.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Nejdřív nastavte GitHub sync')),
+        const SnackBar(content: Text('Nejdřív se zaregistrujte')),
       );
       return;
     }
 
-    final path = '$username.json';
-    final url = Uri.parse('https://api.github.com/repos/$repo/contents/$path');
+    final filename = _emailToFilename(email);
+    final path = '$filename.json';
+    final url = Uri.parse('https://api.github.com/repos/$_kGhRepo/contents/$path');
+    final token = _kGhToken;
 
     try {
       // First, check if file exists to get its SHA (required for update)
@@ -871,7 +871,7 @@ class _HomeScreenState extends State<HomeScreen> {
         }
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Záloha nahrána na GitHub jako $path')),
+            SnackBar(content: Text('Záloha nahrána jako $path')),
           );
           setState(() {});
         }
@@ -892,12 +892,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _githubRestore() async {
-    final repo = prefs.getString('gh_repo') ?? '';
-    final token = prefs.getString('gh_token') ?? '';
-    final username = prefs.getString('gh_username') ?? '';
-    if (repo.isEmpty || token.isEmpty || username.isEmpty) {
+    final email = prefs.getString('gh_email') ?? '';
+    if (email.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Nejdřív nastavte GitHub sync')),
+        const SnackBar(content: Text('Nejdřív se zaregistrujte')),
       );
       return;
     }
@@ -910,7 +908,7 @@ class _HomeScreenState extends State<HomeScreen> {
           backgroundColor: const Color(0xFF16213E),
           title: const Text('Přepsat stávající data?'),
           content: Text(
-            'Stáhnout zálohu pro $username z GitHubu a přepsat lokální data?',
+            'Stáhnout zálohu pro $email a přepsat lokální data?',
           ),
           actions: [
             TextButton(
@@ -927,8 +925,10 @@ class _HomeScreenState extends State<HomeScreen> {
       if (confirm != true) return;
     }
 
-    final path = '$username.json';
-    final url = Uri.parse('https://api.github.com/repos/$repo/contents/$path');
+    final filename = _emailToFilename(email);
+    final path = '$filename.json';
+    final url = Uri.parse('https://api.github.com/repos/$_kGhRepo/contents/$path');
+    final token = _kGhToken;
 
     try {
       final req = await HttpClient().getUrl(url);
@@ -988,7 +988,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Záloha pro $username obnovena z GitHubu')),
+          SnackBar(content: Text('Záloha pro $email obnovena z GitHubu')),
         );
         setState(() {});
       }
@@ -1066,20 +1066,19 @@ class _HomeScreenState extends State<HomeScreen> {
             const Divider(color: Colors.grey),
             ListTile(
               leading: const Icon(Icons.cloud_sync, color: Color(0xFF00D9FF)),
-              title: const Text('GitHub sync'),
-              subtitle: Text(prefs.getString('gh_username')?.isNotEmpty == true
-                  ? 'Přihlášen jako ${prefs.getString('gh_username')}'
-                  : 'Nastavit synchronizaci'),
+              title: const Text('Cloud účet'),
+              subtitle: Text(prefs.getString('gh_email')?.isNotEmpty == true
+                  ? 'Přihlášen jako ${prefs.getString('gh_username') ?? prefs.getString('gh_email')}'
+                  : 'Registrace'),
               onTap: () {
                 Navigator.pop(context);
                 _showGitHubSyncSettings();
               },
             ),
-            if (prefs.getString('gh_token')?.isNotEmpty == true) ...[
+            if (prefs.getString('gh_email')?.isNotEmpty == true) ...[
               ListTile(
                 leading: const Icon(Icons.cloud_upload, color: Color(0xFF00FF88)),
-                title: const Text('Nahrát na GitHub'),
-                subtitle: const Text('Uloží zálohu do repa'),
+                title: const Text('Nahrát zálohu do cloudu'),
                 onTap: () {
                   Navigator.pop(context);
                   _githubSync();
@@ -1087,8 +1086,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               ListTile(
                 leading: const Icon(Icons.cloud_download, color: Color(0xFFFFD700)),
-                title: const Text('Stáhnout z GitHubu'),
-                subtitle: const Text('Načte zálohu z repa'),
+                title: const Text('Stáhnout zálohu z cloudu'),
                 onTap: () {
                   Navigator.pop(context);
                   _githubRestore();
@@ -1195,14 +1193,21 @@ class _HomeScreenState extends State<HomeScreen> {
 
   static const String _nemeckyUsmevUnlockedKey = 'nemecky_usmev_unlocked';
 
+  // Hardcoded GitHub config for "Němčina s úsměvem" group
+  static const String _kGhRepo = 'DavidPetrov2023/langcards-backups';
+  static const String _kGhToken = '__TOKEN_PLACEHOLDER__'; // TODO: replace with real token before deploy
+
+  String _emailToFilename(String email) {
+    final beforeAt = email.split('@').first.trim().toLowerCase();
+    // Sanitize - only allow alphanumeric, dots, underscores, dashes
+    return beforeAt.replaceAll(RegExp(r'[^a-z0-9._-]'), '_');
+  }
+
   Future<bool> _verifyGithubAccess() async {
-    final repo = prefs.getString('gh_repo') ?? '';
-    final token = prefs.getString('gh_token') ?? '';
-    if (repo.isEmpty || token.isEmpty) return false;
     try {
-      final url = Uri.parse('https://api.github.com/repos/$repo');
+      final url = Uri.parse('https://api.github.com/repos/$_kGhRepo');
       final req = await HttpClient().getUrl(url);
-      req.headers.set('Authorization', 'Bearer $token');
+      req.headers.set('Authorization', 'Bearer $_kGhToken');
       req.headers.set('Accept', 'application/vnd.github+json');
       final res = await req.close();
       await res.drain();
@@ -1213,10 +1218,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _openNemeckySUsmevem() async {
-    final hasGh = (prefs.getString('gh_token') ?? '').isNotEmpty &&
-        (prefs.getString('gh_username') ?? '').isNotEmpty;
-    // Require GitHub registration regardless of past unlock
-    if (!hasGh) {
+    final hasEmail = (prefs.getString('gh_email') ?? '').isNotEmpty;
+    // Require email registration
+    if (!hasEmail) {
       // Show disclaimer first
       final agreed = await showDialog<bool>(
         context: context,
