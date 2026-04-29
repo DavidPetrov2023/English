@@ -51,3 +51,6 @@ tmpclaude-*
 *.pdf
 test_page*.png
 
+# Web build output (deployed to own server)
+docs/
+
