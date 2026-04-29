@@ -721,7 +721,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _showGitHubSyncSettings() async {
     final emailController = TextEditingController(text: prefs.getString('gh_email') ?? '');
-    final nicknameController = TextEditingController(text: prefs.getString('gh_username') ?? '');
+    final savedNickname = prefs.getString('gh_username') ?? '';
+    final savedEmail = prefs.getString('gh_email') ?? '';
+    // Don't pre-fill nickname if it's just the auto-saved email
+    final nicknameController = TextEditingController(
+      text: savedNickname == savedEmail ? '' : savedNickname,
+    );
     String? error;
 
     final saved = await showDialog<bool>(
