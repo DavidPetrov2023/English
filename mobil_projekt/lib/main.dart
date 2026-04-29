@@ -748,7 +748,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   controller: nicknameController,
                   decoration: const InputDecoration(
                     labelText: 'Přezdívka (nepovinné)',
-                    hintText: 'Kristýna',
                   ),
                 ),
                 const SizedBox(height: 12),
