@@ -1,0 +1,11 @@
+{
+  "lesson": 3,
+  "title": "Uhlí a ropa",
+  "cards": [
+    {"q": "Je ropa hořlavá, nebo nehořlavá kapalina?", "a": "Hořlavá kapalina."},
+    {"q": "Kde je uloženo černé uhlí?", "a": "Daleko pod povrchem (v hlubinných dolech)."},
+    {"q": "Co je starší — černé, nebo hnědé uhlí?", "a": "Černé uhlí je starší než hnědé."},
+    {"q": "K čemu se využívá ropa?", "a": "Na výrobu plastů, oblečení, hraček, obuvi a paliv."},
+    {"q": "K čemu se využívá uhlí?", "a": "Jako palivo — k topení a k výrobě elektřiny."}
+  ]
+}

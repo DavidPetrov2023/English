@@ -1,5 +1,14 @@
 {
   "lessons": [
-    {"number": 1, "title": "Sie sind aber neugierig!", "file": "L01.json"}
+    {"number": 1, "title": "Sie sind aber neugierig!", "file": "L01.json"},
+    {"number": 2, "title": "Unsere Familie", "file": "L02.json"},
+    {"number": 3, "title": "Zu Besuch / Wir fragen nach dem Weg", "file": "L03.json"},
+    {"number": 4, "title": "Unsere Deutschstunde", "file": "L04.json"},
+    {"number": 5, "title": "Guten Appetit!", "file": "L05.json"},
+    {"number": 6, "title": "Karin und Horst ziehen um", "file": "L06.json"},
+    {"number": 7, "title": "Beim Arzt / Karlovy Vary", "file": "L07.json"},
+    {"number": 8, "title": "Sport treiben oder einkaufen?", "file": "L08.json"},
+    {"number": 9, "title": "Ein Telefongespräch / Auf der Post", "file": "L09.json"},
+    {"number": 10, "title": "Eine Auslandsreise / Berlin", "file": "L10.json"}
   ]
 }

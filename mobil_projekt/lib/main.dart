@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
@@ -9,25 +11,56 @@ import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:http/http.dart' as http;
+import 'web_audio_stub.dart' if (dart.library.html) 'web_audio_web.dart' as web_audio;
+import 'sw_update_stub.dart' if (dart.library.html) 'sw_update_web.dart' as sw_update;
 
-enum AppLanguage { en, de }
+enum AppLanguage { en, de, cs }
 
 class LanguageConfig {
   final AppLanguage language;
   const LanguageConfig(this.language);
 
-  String get code => language == AppLanguage.en ? 'en' : 'de';
-  String get ttsLocale => language == AppLanguage.en ? 'en-US' : 'de-DE';
+  String get code => switch (language) {
+    AppLanguage.en => 'en',
+    AppLanguage.de => 'de',
+    AppLanguage.cs => 'cs',
+  };
+  String get ttsLocale => switch (language) {
+    AppLanguage.en => 'en-US',
+    AppLanguage.de => 'de-DE',
+    AppLanguage.cs => 'cs-CZ',
+  };
   String get nativeTtsLocale => 'cs-CZ';
-  String get label => language == AppLanguage.en ? 'Angličtina' : 'Němčina';
-  String get labelGenitive => language == AppLanguage.en ? 'angličtiny' : 'němčiny';
-  String get shortLabel => language == AppLanguage.en ? 'EN' : 'DE';
-  String get flagEmoji => language == AppLanguage.en ? '🇺🇸' : '🇩🇪';
+  String get label => switch (language) {
+    AppLanguage.en => 'Angličtina',
+    AppLanguage.de => 'Němčina',
+    AppLanguage.cs => 'Čeština',
+  };
+  String get labelGenitive => switch (language) {
+    AppLanguage.en => 'angličtiny',
+    AppLanguage.de => 'němčiny',
+    AppLanguage.cs => 'češtiny',
+  };
+  String get shortLabel => switch (language) {
+    AppLanguage.en => 'EN',
+    AppLanguage.de => 'DE',
+    AppLanguage.cs => 'CZ',
+  };
+  String get flagEmoji => switch (language) {
+    AppLanguage.en => '🇺🇸',
+    AppLanguage.de => '🇩🇪',
+    AppLanguage.cs => '🇨🇿',
+  };
   String get cardsAsset => language == AppLanguage.en ? 'assets/cards.json' : 'assets/cards_de.json';
   String get grammarAssetPrefix => language == AppLanguage.en ? 'assets/grammar_' : 'assets/grammar_de_';
   String get addCardLabel => language == AppLanguage.en ? 'Anglicky' : 'Německy';
   String get addCardHint => language == AppLanguage.en ? 'Hello, how are you?' : 'Hallo, wie geht es dir?';
-  String get backupFilePrefix => language == AppLanguage.en ? 'english' : 'german';
+  String get backupFilePrefix => switch (language) {
+    AppLanguage.en => 'english',
+    AppLanguage.de => 'german',
+    AppLanguage.cs => 'czech',
+  };
 
   // SharedPreferences keys - per language
   String get progressKey => '${code}_progress';
@@ -39,6 +72,9 @@ class LanguageConfig {
   String get hasUnsavedProgressKey => '${code}_hasUnsavedProgress';
 
   String directionLabel(bool isForeignToCz) {
+    if (language == AppLanguage.cs) {
+      return isForeignToCz ? 'Otázka → Odpověď' : 'Odpověď → Otázka';
+    }
     return isForeignToCz ? '$shortLabel → CZ' : 'CZ → $shortLabel';
   }
 
@@ -50,7 +86,31 @@ class LanguageConfig {
   }
 }
 
+final GlobalKey<ScaffoldMessengerState> _appMessengerKey =
+    GlobalKey<ScaffoldMessengerState>();
+
 void main() {
+  if (kIsWeb) {
+    sw_update.startVersionPolling((newVersion) {
+      _appMessengerKey.currentState?.showSnackBar(
+        SnackBar(
+          duration: const Duration(days: 365),
+          backgroundColor: const Color(0xFF00D9FF),
+          content: const Text(
+            'Je k dispozici nová verze aplikace.',
+            style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+          ),
+          action: SnackBarAction(
+            label: 'NAČÍST ZNOVU',
+            textColor: Colors.black,
+            onPressed: () {
+              sw_update.applyUpdate();
+            },
+          ),
+        ),
+      );
+    });
+  }
   runApp(const EnglishLearningApp());
 }
 
@@ -62,6 +122,7 @@ class EnglishLearningApp extends StatelessWidget {
     return MaterialApp(
       title: 'LangCards',
       debugShowCheckedModeBanner: false,
+      scaffoldMessengerKey: _appMessengerKey,
       theme: ThemeData(
         brightness: Brightness.dark,
         primaryColor: const Color(0xFF00D9FF),
@@ -72,8 +133,17 @@ class EnglishLearningApp extends StatelessWidget {
           surface: Color(0xFF16213E),
         ),
       ),
-      home: const HomeScreen(),
+      home: _isPrvoukaMode() ? const PrvoukaHomeScreen() : const AuthGate(),
     );
+  }
+
+  static bool _isPrvoukaMode() {
+    if (!kIsWeb) return false;
+    try {
+      return (Uri.base.queryParameters['prvouka'] ?? '').isNotEmpty;
+    } catch (_) {
+      return false;
+    }
   }
 }
 
@@ -183,7 +253,8 @@ class GrammarCategory {
 
 // Home Screen
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  final Map<String, dynamic>? remoteBackup;
+  const HomeScreen({super.key, this.remoteBackup});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -205,6 +276,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool hasUnsavedProgress = false;
   late LanguageConfig langConfig;
   bool _showFirstLaunchPicker = false;
+  bool _remoteBackupApplied = false;
 
   @override
   void initState() {
@@ -261,11 +333,71 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<void> _applyRemoteBackup(Map<String, dynamic> backup) async {
+    // Backup format from server is {data: {...}, size_bytes, updated_at}
+    final inner = backup['data'] is Map ? backup['data'] as Map<String, dynamic> : backup;
+    if (inner['version'] == '3.0' && inner['languages'] != null) {
+      final languages = inner['languages'] as Map<String, dynamic>;
+      for (final entry in languages.entries) {
+        final lc = LanguageConfig.fromCode(entry.key);
+        if (lc == null) continue;
+        final langData = entry.value as Map<String, dynamic>;
+        if (langData['progress'] != null) {
+          await prefs.setString(lc.progressKey, json.encode(langData['progress']));
+        }
+        if (langData['myCards'] != null) {
+          await prefs.setString(lc.myCardsKey, json.encode(langData['myCards']));
+        }
+      }
+    }
+  }
+
+  static const Set<String> _adminEmails = {'johndave@seznam.cz'};
+
+  bool _isAdmin() {
+    final email = (prefs.getString(AuthService.kEmailKey) ?? '').toLowerCase();
+    return _adminEmails.contains(email);
+  }
+
+  Future<void> _clearLocalAppState() async {
+    for (final lang in AppLanguage.values) {
+      if (lang == AppLanguage.cs) continue; // Prvouka data is independent of main app
+      final lc = LanguageConfig(lang);
+      await prefs.remove(lc.progressKey);
+      await prefs.remove(lc.myCardsKey);
+      await prefs.remove(lc.myCardsNameKey);
+      await prefs.remove(lc.lastBackupDateKey);
+      await prefs.remove(lc.lastBackupProgressCountKey);
+      await prefs.remove(lc.lastBackupCardsCountKey);
+      await prefs.remove(lc.hasUnsavedProgressKey);
+    }
+  }
+
   Future<void> _loadAllData() async {
     prefs = await SharedPreferences.getInstance();
 
     // Migrate old data (one-time)
     await _migrateOldData();
+
+    // Detekce změny účtu - smažeme lokální data jen když se jeden účet
+    // přepne na druhý. Při prvním přihlášení (lastEmail == null) lokální
+    // data zachováme - migrace existujících mobile uživatelů.
+    final currentEmail = prefs.getString(AuthService.kEmailKey);
+    final lastEmail = prefs.getString('last_logged_in_email');
+    if (lastEmail != null && currentEmail != null && currentEmail != lastEmail) {
+      await _clearLocalAppState();
+    }
+    if (currentEmail != null) {
+      await prefs.setString('last_logged_in_email', currentEmail);
+    }
+
+    // Apply remote backup if provided (from AuthGate after login).
+    // Pouze JEDNOU - další volání _loadAllData (např. při přepnutí jazyka)
+    // zachovají aktuální stav prefs (včetně lokálně obnovených dat).
+    if (widget.remoteBackup != null && !_remoteBackupApplied) {
+      await _applyRemoteBackup(widget.remoteBackup!);
+      _remoteBackupApplied = true;
+    }
 
     // Load language
     final savedLang = prefs.getString('selectedLanguage');
@@ -410,6 +542,67 @@ class _HomeScreenState extends State<HomeScreen> {
       hasUnsavedProgress = true;
       await prefs.setBool(langConfig.hasUnsavedProgressKey, true);
     }
+    _scheduleAutoBackup();
+  }
+
+  bool _backupInFlight = false;
+
+  void _scheduleAutoBackup() {
+    final token = prefs.getString(AuthService.kTokenKey);
+    if (token == null || token.isEmpty) return;
+    _doAutoBackup();
+  }
+
+  Future<void> _doAutoBackup() async {
+    final token = prefs.getString(AuthService.kTokenKey);
+    if (token == null || token.isEmpty) return;
+    if (_backupInFlight) return;
+    _backupInFlight = true;
+    try {
+      final Map<String, dynamic> allLangs = {};
+      for (final lang in AppLanguage.values) {
+        if (lang == AppLanguage.cs) continue; // Prvouka data not synced to cloud
+        final lc = LanguageConfig(lang);
+        final progJson = prefs.getString(lc.progressKey);
+        final cardsJson = prefs.getString(lc.myCardsKey);
+        if (progJson != null || cardsJson != null) {
+          allLangs[lc.code] = {
+            'progress': progJson != null ? json.decode(progJson) : {},
+            'myCards': cardsJson != null ? json.decode(cardsJson) : [],
+          };
+        }
+      }
+      final payload = {
+        'version': '3.0',
+        'date': DateTime.now().toIso8601String(),
+        'languages': allLangs,
+      };
+      final res = await AuthService.uploadBackup(token, payload);
+      if (res.statusCode == 401) {
+        await prefs.remove(AuthService.kTokenKey);
+        await prefs.remove(AuthService.kEmailKey);
+        if (mounted) {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const AuthGate()),
+            (_) => false,
+          );
+        }
+      } else if (res.statusCode == 200) {
+        lastBackupDate = DateTime.now();
+        hasUnsavedProgress = false;
+        for (final lang in AppLanguage.values) {
+          if (lang == AppLanguage.cs) continue;
+          final lc = LanguageConfig(lang);
+          await prefs.setString(lc.lastBackupDateKey, lastBackupDate!.toIso8601String());
+          await prefs.setBool(lc.hasUnsavedProgressKey, false);
+        }
+        if (mounted) setState(() {});
+      }
+    } catch (_) {
+      // network error - will retry on next save
+    } finally {
+      _backupInFlight = false;
+    }
   }
 
   String _getCardKey(FlashCard card) {
@@ -510,6 +703,7 @@ class _HomeScreenState extends State<HomeScreen> {
     // Create backup data with ALL languages
     final Map<String, dynamic> allLangs = {};
     for (final lang in AppLanguage.values) {
+      if (lang == AppLanguage.cs) continue; // Prvouka data is independent of main app
       final lc = LanguageConfig(lang);
       final progJson = prefs.getString(lc.progressKey);
       final cardsJson = prefs.getString(lc.myCardsKey);
@@ -549,6 +743,7 @@ class _HomeScreenState extends State<HomeScreen> {
       lastBackupDate = DateTime.now();
       hasUnsavedProgress = false;
       for (final lang in AppLanguage.values) {
+        if (lang == AppLanguage.cs) continue;
         final lc = LanguageConfig(lang);
         await prefs.setString(lc.lastBackupDateKey, lastBackupDate!.toIso8601String());
         await prefs.setBool(lc.hasUnsavedProgressKey, false);
@@ -708,6 +903,9 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) {
         setState(() {});
       }
+
+      // Po obnovení ze souboru nahrát data na server (pokud je přihlášený)
+      _scheduleAutoBackup();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -717,293 +915,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // ===== GitHub Sync =====
-
-  Future<void> _showGitHubSyncSettings() async {
-    final emailController = TextEditingController(text: prefs.getString('gh_email') ?? '');
-    final savedNickname = prefs.getString('gh_username') ?? '';
-    final savedEmail = prefs.getString('gh_email') ?? '';
-    // Don't pre-fill nickname if it's just the auto-saved email
-    final nicknameController = TextEditingController(
-      text: savedNickname == savedEmail ? '' : savedNickname,
-    );
-    String? error;
-
-    final saved = await showDialog<bool>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: const Color(0xFF16213E),
-          title: const Text('Registrace'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: InputDecoration(
-                    labelText: 'Email',
-                    hintText: 'jmeno@email.cz',
-                    errorText: error,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: nicknameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Přezdívka (nepovinné)',
-                  ),
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  'Email slouží pro pozdější obnovu účtu. Záloha se ukládá do '
-                  'soukromého repa skupiny.',
-                  style: TextStyle(fontSize: 11, color: Colors.grey),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Zrušit'),
-            ),
-            if ((prefs.getString('gh_email') ?? '').isNotEmpty)
-              TextButton(
-                onPressed: () async {
-                  await prefs.remove('gh_email');
-                  await prefs.remove('gh_username');
-                  await prefs.remove(_nemeckyUsmevUnlockedKey);
-                  if (context.mounted) Navigator.pop(context, true);
-                },
-                child: const Text('Odhlásit', style: TextStyle(color: Colors.red)),
-              ),
-            TextButton(
-              onPressed: () async {
-                final email = emailController.text.trim().toLowerCase();
-                if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email)) {
-                  setDialogState(() => error = 'Zadejte platný email');
-                  return;
-                }
-                final nickname = nicknameController.text.trim();
-                await prefs.setString('gh_email', email);
-                await prefs.setString('gh_username', nickname.isNotEmpty ? nickname : email);
-                if (context.mounted) Navigator.pop(context, true);
-              },
-              child: const Text('Uložit'),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (saved == true && mounted) setState(() {});
-  }
-
-  String _ghBackupJson() {
-    final Map<String, dynamic> allLangs = {};
-    for (final lang in AppLanguage.values) {
-      final lc = LanguageConfig(lang);
-      final progJson = prefs.getString(lc.progressKey);
-      final cardsJson = prefs.getString(lc.myCardsKey);
-      if (progJson != null || cardsJson != null) {
-        allLangs[lc.code] = {
-          'progress': progJson != null ? json.decode(progJson) : {},
-          'myCards': cardsJson != null ? json.decode(cardsJson) : [],
-        };
-      }
-    }
-    return json.encode({
-      'version': '3.0',
-      'date': DateTime.now().toIso8601String(),
-      'languages': allLangs,
-    });
-  }
-
-  Future<void> _githubSync() async {
-    final email = prefs.getString('gh_email') ?? '';
-    if (email.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Nejdřív se zaregistrujte')),
-      );
-      return;
-    }
-
-    final filename = _emailToFilename(email);
-    final path = '$filename.json';
-    final url = Uri.parse('https://api.github.com/repos/$_kGhRepo/contents/$path');
-    final token = _kGhToken;
-
-    try {
-      // First, check if file exists to get its SHA (required for update)
-      String? sha;
-      final getReq = await HttpClient().getUrl(url);
-      getReq.headers.set('Authorization', 'Bearer $token');
-      getReq.headers.set('Accept', 'application/vnd.github+json');
-      final getRes = await getReq.close();
-      if (getRes.statusCode == 200) {
-        final body = await getRes.transform(const Utf8Decoder()).join();
-        final data = json.decode(body);
-        sha = data['sha'] as String?;
-      }
-
-      // Upload (create or update)
-      final content = _ghBackupJson();
-      final encoded = base64Encode(utf8.encode(content));
-
-      final putReq = await HttpClient().putUrl(url);
-      putReq.headers.set('Authorization', 'Bearer $token');
-      putReq.headers.set('Accept', 'application/vnd.github+json');
-      putReq.headers.contentType = ContentType.json;
-      final payload = {
-        'message': 'LangCards backup ${DateTime.now().toIso8601String()}',
-        'content': encoded,
-        if (sha != null) 'sha': sha,
-      };
-      putReq.write(json.encode(payload));
-      final putRes = await putReq.close();
-      final putBody = await putRes.transform(const Utf8Decoder()).join();
-
-      if (putRes.statusCode == 200 || putRes.statusCode == 201) {
-        // Update backup tracking
-        lastBackupDate = DateTime.now();
-        hasUnsavedProgress = false;
-        for (final lang in AppLanguage.values) {
-          final lc = LanguageConfig(lang);
-          await prefs.setString(lc.lastBackupDateKey, lastBackupDate!.toIso8601String());
-          await prefs.setBool(lc.hasUnsavedProgressKey, false);
-        }
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Záloha nahrána jako $path')),
-          );
-          setState(() {});
-        }
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Chyba ${putRes.statusCode}: $putBody')),
-          );
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Chyba: $e')),
-        );
-      }
-    }
-  }
-
-  Future<void> _githubRestore() async {
-    final email = prefs.getString('gh_email') ?? '';
-    if (email.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Nejdřív se zaregistrujte')),
-      );
-      return;
-    }
-
-    // Confirm overwrite
-    if (progress.isNotEmpty || myCards.isNotEmpty) {
-      final confirm = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          backgroundColor: const Color(0xFF16213E),
-          title: const Text('Přepsat stávající data?'),
-          content: Text(
-            'Stáhnout zálohu pro $email a přepsat lokální data?',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Zrušit'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Přepsat', style: TextStyle(color: Colors.orange)),
-            ),
-          ],
-        ),
-      );
-      if (confirm != true) return;
-    }
-
-    final filename = _emailToFilename(email);
-    final path = '$filename.json';
-    final url = Uri.parse('https://api.github.com/repos/$_kGhRepo/contents/$path');
-    final token = _kGhToken;
-
-    try {
-      final req = await HttpClient().getUrl(url);
-      req.headers.set('Authorization', 'Bearer $token');
-      req.headers.set('Accept', 'application/vnd.github+json');
-      final res = await req.close();
-      if (res.statusCode != 200) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Záloha nenalezena (${res.statusCode})')),
-          );
-        }
-        return;
-      }
-      final body = await res.transform(const Utf8Decoder()).join();
-      final data = json.decode(body);
-      final base64Content = (data['content'] as String).replaceAll('\n', '');
-      final decoded = utf8.decode(base64Decode(base64Content));
-      final backup = json.decode(decoded);
-
-      final backupDate = backup['date'] != null
-          ? (DateTime.tryParse(backup['date']) ?? DateTime.now())
-          : DateTime.now();
-
-      if (backup['version'] == '3.0' && backup['languages'] != null) {
-        final languages = backup['languages'] as Map<String, dynamic>;
-        for (final entry in languages.entries) {
-          final lc = LanguageConfig.fromCode(entry.key);
-          if (lc == null) continue;
-          final langData = entry.value as Map<String, dynamic>;
-          if (langData['progress'] != null) {
-            await prefs.setString(lc.progressKey, json.encode(langData['progress']));
-          }
-          if (langData['myCards'] != null) {
-            await prefs.setString(lc.myCardsKey, json.encode(langData['myCards']));
-          }
-          await prefs.setString(lc.lastBackupDateKey, backupDate.toIso8601String());
-          await prefs.setBool(lc.hasUnsavedProgressKey, false);
-        }
-
-        // Reload current language
-        final progJson = prefs.getString(langConfig.progressKey);
-        progress.clear();
-        if (progJson != null) {
-          (json.decode(progJson) as Map<String, dynamic>).forEach((k, v) {
-            progress[k] = CardProgress.fromJson(v);
-          });
-        }
-        final cardsJson = prefs.getString(langConfig.myCardsKey);
-        myCards = cardsJson != null
-            ? (json.decode(cardsJson) as List).map((c) => FlashCard.fromJson(c)).toList()
-            : [];
-      }
-
-      lastBackupDate = backupDate;
-      hasUnsavedProgress = false;
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Záloha pro $email obnovena z GitHubu')),
-        );
-        setState(() {});
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Chyba: $e')),
-        );
-      }
-    }
-  }
 
   void _showSettings() {
     showModalBottomSheet(
@@ -1013,42 +924,48 @@ class _HomeScreenState extends State<HomeScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (context) => Padding(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Backup reminder toggle
-            StatefulBuilder(
-              builder: (context, setLocalState) => SwitchListTile(
-                secondary: Icon(
-                  backupEnabled ? Icons.notifications_active : Icons.notifications_off,
-                  color: backupEnabled ? const Color(0xFF00FF88) : Colors.grey,
+            if ((prefs.getString(AuthService.kTokenKey) ?? '').isNotEmpty) ...[
+              ListTile(
+                leading: const Icon(Icons.account_circle, color: Color(0xFF00D9FF)),
+                title: Text('Přihlášen: ${prefs.getString(AuthService.kEmailKey) ?? ''}'),
+                subtitle: const Text('Záloha se synchronizuje automaticky'),
+              ),
+              if (_isAdmin())
+                ListTile(
+                  leading: const Icon(Icons.admin_panel_settings, color: Color(0xFFFFD700)),
+                  title: const Text('Admin přehled'),
+                  subtitle: const Text('Seznam uživatelů a jejich aktivita'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const AdminScreen()),
+                    );
+                  },
                 ),
-                title: const Text('Připomínka zálohy'),
-                subtitle: Text(backupEnabled ? 'Připomene po týdnu' : 'Vypnuto'),
-                value: backupEnabled,
-                activeTrackColor: const Color(0xFF00FF88),
-                onChanged: (value) async {
-                  setLocalState(() {
-                    backupEnabled = value;
-                  });
-                  await prefs.setBool('backupEnabled', value);
+              ListTile(
+                leading: const Icon(Icons.logout, color: Colors.red),
+                title: const Text('Odhlásit'),
+                onTap: () async {
+                  await prefs.remove(AuthService.kTokenKey);
+                  await prefs.remove(AuthService.kEmailKey);
+                  await prefs.remove('last_logged_in_email');
+                  await _clearLocalAppState();
                   if (context.mounted) {
                     Navigator.pop(context);
+                    Navigator.of(context).pushAndRemoveUntil(
+                      MaterialPageRoute(builder: (_) => const AuthGate()),
+                      (_) => false,
+                    );
                   }
-                  setState(() {});
                 },
               ),
-            ),
-            if (lastBackupDate != null)
-              Padding(
-                padding: const EdgeInsets.only(left: 72, bottom: 8),
-                child: Text(
-                  'Poslední záloha: ${lastBackupDate!.day}.${lastBackupDate!.month}.${lastBackupDate!.year}',
-                  style: TextStyle(color: Colors.grey[500], fontSize: 12),
-                ),
-              ),
-            const Divider(color: Colors.grey),
+              const Divider(color: Colors.grey),
+            ],
             ListTile(
               leading: const Icon(Icons.share, color: Color(0xFF00D9FF)),
               title: const Text('Sdílet zálohu'),
@@ -1069,36 +986,6 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const Divider(color: Colors.grey),
             ListTile(
-              leading: const Icon(Icons.cloud_sync, color: Color(0xFF00D9FF)),
-              title: const Text('Cloud účet'),
-              subtitle: Text(prefs.getString('gh_email')?.isNotEmpty == true
-                  ? 'Přihlášen jako ${prefs.getString('gh_username') ?? prefs.getString('gh_email')}'
-                  : 'Registrace'),
-              onTap: () {
-                Navigator.pop(context);
-                _showGitHubSyncSettings();
-              },
-            ),
-            if (prefs.getString('gh_email')?.isNotEmpty == true) ...[
-              ListTile(
-                leading: const Icon(Icons.cloud_upload, color: Color(0xFF00FF88)),
-                title: const Text('Nahrát zálohu do cloudu'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _githubSync();
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.cloud_download, color: Color(0xFFFFD700)),
-                title: const Text('Stáhnout zálohu z cloudu'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _githubRestore();
-                },
-              ),
-            ],
-            const Divider(color: Colors.grey),
-            ListTile(
               leading: const Icon(Icons.info_outline, color: Colors.grey),
               title: const Text('O aplikaci'),
               onTap: () {
@@ -1106,8 +993,16 @@ class _HomeScreenState extends State<HomeScreen> {
                 _showAboutDialog();
               },
             ),
-            // Extra padding for navigation bar
-            SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
+            ListTile(
+              leading: const Icon(Icons.help_outline, color: Color(0xFF00D9FF)),
+              title: const Text('Jak to funguje'),
+              subtitle: const Text('SM-2 algoritmus a Boost'),
+              onTap: () {
+                Navigator.pop(context);
+                _showHowItWorksDialog();
+              },
+            ),
+            SizedBox(height: MediaQuery.of(context).padding.bottom + 48),
           ],
         ),
       ),
@@ -1120,18 +1015,109 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF16213E),
         title: const Text('O aplikaci'),
-        content: Text(
-          'LangCards v1.4.1\n\n'
+        content: const Text(
+          'LangCards v1.5.1\n\n'
           'Aplikace pro učení cizích jazyků pomocí kartiček.\n\n'
-          'Funkce:\n'
-          '• Vlastní kartičky\n'
-          '• Gramatika A1-C1\n'
-          '• SM-2 algoritmus (spaced repetition)\n'
-          '• Text-to-Speech výslovnost\n'
-          '• Záloha sdílením souboru\n\n'
-          'Autor: David Petrov\n'
-          'Email: davidpetrov@email.cz',
+          'Autor: David Petrov',
           style: TextStyle(height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Zavřít'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showHowItWorksDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF16213E),
+        title: const Text('Jak to funguje'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: const [
+              Text(
+                '📚 SM-2 algoritmus (normální režim)',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+              ),
+              SizedBox(height: 6),
+              Text(
+                'Klasický algoritmus „spaced repetition" (rozložené opakování). '
+                'Každá kartička má svůj plán: po správném zhodnocení se interval '
+                'do dalšího opakování zvětšuje, po chybě se vrací na začátek.\n\n'
+                'Kartičky které dnes „nejsou na řadě" (nextReview > dnes) se '
+                'normálně neukazují. Když projedeš všechny splatné, uvidíš '
+                '„Hotovo na dnes".',
+                style: TextStyle(fontSize: 13, height: 1.4),
+              ),
+              SizedBox(height: 14),
+              Text(
+                '🎯 Hodnocení kartiček',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+              ),
+              SizedBox(height: 6),
+              Text(
+                '• Těžké → karta zčervená (Těžká), interval = 1 den, brzy ji uvidíš znovu\n'
+                '• Snadné v normálním režimu → postupný SM-2: interval '
+                'roste (1 → 6 → 15 → 37 → 92 dní…)\n'
+                '• Snadné v Boost režimu → skok rovnou do „Naučená" '
+                '(modrá, interval ~90 dní)',
+                style: TextStyle(fontSize: 13, height: 1.4),
+              ),
+              SizedBox(height: 14),
+              Text(
+                '🎨 Stavy kartiček (barvy)',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+              ),
+              SizedBox(height: 6),
+              Text(
+                '• Šedá – Nová (ještě nikdy)\n'
+                '• Červená – Těžká (potřebuje cvičit)\n'
+                '• Oranžová – Učí se\n'
+                '• Zelená – Dobrá\n'
+                '• Modrá – Naučená 💙',
+                style: TextStyle(fontSize: 13, height: 1.4),
+              ),
+              SizedBox(height: 14),
+              Text(
+                '🔥 Boost před lekcí',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+              ),
+              SizedBox(height: 6),
+              Text(
+                'Tlačítko „Boost před lekcí" se objeví na konci normálního '
+                'cvičení (i když jsou všechny kartičky už Naučené).\n\n'
+                '1. kolo: Projdou se VŠECHNY kartičky (i Naučené - pro '
+                'připomenutí). Ignoruje SM-2 plán.\n\n'
+                '• Klikání „Snadné" → karty co znáš zůstanou/přejdou '
+                'do Naučená (modré)\n'
+                '• Klikání „Těžké" → karty co neumíš se vrátí v dalším kole\n\n'
+                'Další kola: Opakují se už jen ty co stále neumíš. Cyklicky, '
+                'dokud nejsou všechny modré 💙.\n\n'
+                'Použití: před lekcí němčiny si rychle projedeš všechno - '
+                'rychle odbavíš to co umíš a soustředíš se na to co ne.',
+                style: TextStyle(fontSize: 13, height: 1.4),
+              ),
+              SizedBox(height: 14),
+              Text(
+                '⌨️ Klávesnice (desktop)',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+              ),
+              SizedBox(height: 6),
+              Text(
+                '• Mezerník / Enter → 🔊 přečíst + ukázat překlad\n'
+                '• ← → Těžké\n'
+                '• → → Snadné',
+                style: TextStyle(fontSize: 13, height: 1.4),
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(
@@ -1145,9 +1131,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   bool _needsBackup() {
     if (!backupEnabled) return false;
-    // Nikdy nezálohováno - potřeba pokud jsou data
     if (lastBackupDate == null) return progress.isNotEmpty || myCards.isNotEmpty;
-    // Nový pokrok od poslední zálohy
     if (hasUnsavedProgress) return true;
     if (progress.length > lastBackupProgressCount) return true;
     if (myCards.length > lastBackupCardsCount) return true;
@@ -1164,28 +1148,19 @@ class _HomeScreenState extends State<HomeScreen> {
       iconData = Icons.cloud_off_outlined;
       tooltip = 'Záloha vypnuta';
     } else if (progress.isEmpty && myCards.isEmpty) {
-      // Žádná data - šedá ikona
       iconColor = Colors.grey;
       iconData = Icons.cloud_outlined;
       tooltip = 'Žádná data k zálohování';
     } else if (_needsBackup()) {
       iconColor = Colors.orange;
       iconData = Icons.cloud_upload_outlined;
-      // Spočítej nové položky
-      final newProgress = progress.length - lastBackupProgressCount;
-      final newCards = myCards.length - lastBackupCardsCount;
-      if (lastBackupDate == null) {
-        tooltip = 'Nezálohováno - klikni pro zálohu';
-      } else {
-        final parts = <String>[];
-        if (newProgress > 0) parts.add('+$newProgress pokrok');
-        if (newCards > 0) parts.add('+$newCards kartiček');
-        tooltip = parts.isNotEmpty ? parts.join(', ') : 'Nová data k záloze';
-      }
+      tooltip = 'Nová data k záloze';
     } else {
       iconColor = const Color(0xFF00FF88);
       iconData = Icons.cloud_done_outlined;
-      tooltip = 'Zálohováno ${lastBackupDate!.day}.${lastBackupDate!.month}.${lastBackupDate!.year}';
+      tooltip = lastBackupDate != null
+          ? 'Zálohováno ${lastBackupDate!.day}.${lastBackupDate!.month}.${lastBackupDate!.year}'
+          : 'Synchronizováno';
     }
 
     return IconButton(
@@ -1197,48 +1172,19 @@ class _HomeScreenState extends State<HomeScreen> {
 
   static const String _nemeckyUsmevUnlockedKey = 'nemecky_usmev_unlocked';
 
-  // Hardcoded GitHub config for "Němčina s úsměvem" group
-  static const String _kGhRepo = 'DavidPetrov2023/langcards-backups';
-  static const String _kGhToken = '__TOKEN_PLACEHOLDER__'; // TODO: replace with real token before deploy
-
-  String _emailToFilename(String email) {
-    final beforeAt = email.split('@').first.trim().toLowerCase();
-    // Sanitize - only allow alphanumeric, dots, underscores, dashes
-    return beforeAt.replaceAll(RegExp(r'[^a-z0-9._-]'), '_');
-  }
-
-  Future<bool> _verifyGithubAccess() async {
-    try {
-      final url = Uri.parse('https://api.github.com/repos/$_kGhRepo');
-      final req = await HttpClient().getUrl(url);
-      req.headers.set('Authorization', 'Bearer $_kGhToken');
-      req.headers.set('Accept', 'application/vnd.github+json');
-      final res = await req.close();
-      await res.drain();
-      return res.statusCode == 200;
-    } catch (_) {
-      return false;
-    }
-  }
-
   Future<void> _openNemeckySUsmevem() async {
-    final hasEmail = (prefs.getString('gh_email') ?? '').isNotEmpty;
-    // Require email registration
-    if (!hasEmail) {
-      // Show disclaimer first
+    // Auth is handled at app level; just show disclaimer once.
+    final accepted = prefs.getBool(_nemeckyUsmevUnlockedKey) ?? false;
+    if (!accepted) {
       final agreed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
           backgroundColor: const Color(0xFF16213E),
           title: const Text('Upozornění'),
           content: const Text(
-            'Tato sekce obsahuje slovní zásobu z učebnice "Německy s úsměvem - nově" '
-            '(Fraus 2003).\n\n'
-            'Obsah je určen výhradně pro osobní studium v rámci naší soukromé '
-            'výukové skupiny. Není povoleno volné šíření, kopírování nebo '
+            'Slovní zásobu z této sekce používáme pouze pro osobní studium v rámci '
+            'soukromé výukové skupiny. Není povoleno volné šíření, kopírování nebo '
             'distribuce mimo tuto skupinu.\n\n'
-            'Pro vstup je potřeba registrace přes GitHub - každý uživatel zadá své '
-            'jméno a sdílený přístupový token od správce skupiny.\n\n'
             'Autor aplikace nenese odpovědnost za případné porušení autorských '
             'práv třetími osobami.',
             style: TextStyle(fontSize: 14),
@@ -1256,25 +1202,6 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       );
       if (agreed != true) return;
-
-      // Show GitHub registration
-      if (!mounted) return;
-      await _showGitHubSyncSettings();
-
-      // Verify access works
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Ověřuji přístup k repu...')),
-      );
-      final ok = await _verifyGithubAccess();
-      if (!ok) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Přístup zamítnut. Zkontrolujte token a repo.')),
-          );
-        }
-        return;
-      }
       await prefs.setBool(_nemeckyUsmevUnlockedKey, true);
     }
 
@@ -1335,14 +1262,14 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Builder(builder: (_) {
-          final ghUser = prefs.getString('gh_username') ?? '';
+          final authEmail = prefs.getString(AuthService.kEmailKey) ?? '';
           return Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               const Text('LangCards', style: TextStyle(fontSize: 18)),
-              if (ghUser.isNotEmpty)
+              if (authEmail.isNotEmpty)
                 Text(
-                  '☁️ $ghUser',
+                  '☁️ $authEmail',
                   style: const TextStyle(fontSize: 11, color: Color(0xFF00D9FF)),
                 ),
             ],
@@ -1358,8 +1285,6 @@ class _HomeScreenState extends State<HomeScreen> {
             tooltip: langConfig.label,
             onPressed: _showLanguagePicker,
           ),
-          // Backup status indicator
-          _buildBackupStatusIndicator(),
           IconButton(
             icon: const Icon(Icons.settings),
             onPressed: _showSettings,
@@ -1451,6 +1376,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _saveMyCards() async {
     final cardsJson = myCards.map((c) => c.toJson()).toList();
     await prefs.setString(langConfig.myCardsKey, json.encode(cardsJson));
+    _scheduleAutoBackup();
   }
 
   Future<void> _addNewCard() async {
@@ -1473,11 +1399,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 final uri = Uri.parse(
                   'https://api.mymemory.translated.net/get?q=${Uri.encodeComponent(text)}&langpair=$from|$to',
                 );
-                final httpClient = HttpClient();
-                final request = await httpClient.getUrl(uri);
-                final response = await request.close();
-                final body = await response.transform(const Utf8Decoder()).join();
-                final data = json.decode(body);
+                final response = await http.get(uri);
+                final data = json.decode(response.body);
                 if (data['responseStatus'] == 200) {
                   String result = data['responseData']['translatedText'] as String;
                   result = result
@@ -2157,6 +2080,7 @@ class LearningScreen extends StatefulWidget {
   final Map<String, CardProgress> progress;
   final Function() onSaveProgress;
   final LanguageConfig langConfig;
+  final bool initialIsEnToCz;
 
   const LearningScreen({
     super.key,
@@ -2165,6 +2089,7 @@ class LearningScreen extends StatefulWidget {
     required this.progress,
     required this.onSaveProgress,
     required this.langConfig,
+    this.initialIsEnToCz = false,
   });
 
   @override
@@ -2174,8 +2099,13 @@ class LearningScreen extends StatefulWidget {
 class _LearningScreenState extends State<LearningScreen> {
   FlashCard? currentCard;
   bool showTranslation = false;
-  bool isEnToCz = false;
+  late bool isEnToCz = widget.initialIsEnToCz;
   int todayReviewed = 0;
+
+  final FocusNode _keyboardFocus = FocusNode();
+  final Set<String> _sessionReviewed = {};
+  bool _boostMode = false;
+  bool _boostFirstRoundDone = false;
 
   late FlutterTts flutterTts;
   String? _lastCheckDate;
@@ -2187,6 +2117,36 @@ class _LearningScreenState extends State<LearningScreen> {
     _initTts();
     _lastCheckDate = DateTime.now().toIso8601String().split('T')[0];
     _showNextCard();
+  }
+
+  @override
+  void dispose() {
+    _keyboardFocus.dispose();
+    flutterTts.stop();
+    super.dispose();
+  }
+
+  void _commitRating(int rating) {
+    _rate(rating);
+  }
+
+  KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    final key = event.logicalKey;
+    if (key == LogicalKeyboardKey.space ||
+        key == LogicalKeyboardKey.enter) {
+      _speakAndReveal();
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowRight) {
+      _commitRating(4); // Snadné
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowLeft) {
+      _commitRating(1); // Znovu
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
   }
 
   @override
@@ -2259,10 +2219,28 @@ class _LearningScreenState extends State<LearningScreen> {
       });
   }
 
-  void _showNextCard() {
-    final dueCards = _getDueCards();
+  FlashCard _weightedPick(List<FlashCard> cards) {
+    // Higher weight for cards user struggles with (low repetitions, low ease).
+    final weights = cards.map((c) {
+      final p = _getCardProgress(c);
+      // Base weight 1; +5 for new cards (rep 0); decreases as repetitions grow;
+      // also boosted when ease is low (struggle).
+      final repBonus = (10 - p.repetitions).clamp(1, 10).toDouble();
+      final easeBonus = (3.0 - p.ease).clamp(0.0, 2.0);
+      return repBonus + easeBonus * 2;
+    }).toList();
+    final total = weights.fold<double>(0, (s, w) => s + w);
+    final random = Random();
+    var pick = random.nextDouble() * total;
+    for (var i = 0; i < cards.length; i++) {
+      pick -= weights[i];
+      if (pick <= 0) return cards[i];
+    }
+    return cards.last;
+  }
 
-    if (dueCards.isEmpty) {
+  void _showNextCard() {
+    if (widget.cards.isEmpty) {
       setState(() {
         currentCard = null;
         showTranslation = false;
@@ -2270,14 +2248,96 @@ class _LearningScreenState extends State<LearningScreen> {
       return;
     }
 
-    final pool = dueCards.take(10).toList();
-    final random = Random();
+    final today = DateTime.now().toIso8601String().split('T')[0];
+    List<FlashCard> available;
+
+    if (_boostMode) {
+      bool notLearned(FlashCard c) => _getCardProgress(c).interval <= 21;
+
+      if (!_boostFirstRoundDone) {
+        // První kolo: VŠECHNY karty (i Naučené pro připomenutí)
+        available = widget.cards
+            .where((c) => !_sessionReviewed.contains(_getCardKey(c)))
+            .toList();
+
+        if (available.isEmpty) {
+          // První kolo hotové - dál jen ty co stále neumím
+          _boostFirstRoundDone = true;
+          _sessionReviewed.clear();
+          final remaining = widget.cards.where(notLearned).toList();
+          if (remaining.isEmpty) {
+            setState(() {
+              currentCard = null;
+              showTranslation = false;
+            });
+            return;
+          }
+          available = remaining;
+        }
+      } else {
+        // Další kola: jen ne-Naučené karty
+        available = widget.cards.where((c) {
+          if (_sessionReviewed.contains(_getCardKey(c))) return false;
+          return notLearned(c);
+        }).toList();
+
+        if (available.isEmpty) {
+          final remaining = widget.cards.where(notLearned).toList();
+          if (remaining.isEmpty) {
+            setState(() {
+              currentCard = null;
+              showTranslation = false;
+            });
+            return;
+          }
+          _sessionReviewed.clear();
+          available = remaining;
+        }
+      }
+    } else {
+      // Normální režim = SM-2: pouze splatné karty které nebyly v relaci viděné.
+      available = widget.cards.where((c) {
+        if (_sessionReviewed.contains(_getCardKey(c))) return false;
+        final prog = _getCardProgress(c);
+        return prog.nextReview.compareTo(today) <= 0;
+      }).toList();
+    }
+
+    if (available.isEmpty) {
+      setState(() {
+        currentCard = null;
+        showTranslation = false;
+      });
+      return;
+    }
+
+    // Vybrat váženě, ale vyhnout se okamžitému zopakování stejné karty
+    FlashCard pick = _weightedPick(available);
+    if (available.length > 1 && currentCard != null && pick.en == currentCard!.en) {
+      for (int i = 0; i < 5; i++) {
+        final retry = _weightedPick(available);
+        if (retry.en != currentCard!.en) {
+          pick = retry;
+          break;
+        }
+      }
+    }
 
     setState(() {
-      currentCard = pool[random.nextInt(pool.length)];
+      currentCard = pick;
       showTranslation = false;
     });
   }
+
+  void _startBoost() {
+    setState(() {
+      _boostMode = true;
+      _boostFirstRoundDone = false;
+      _sessionReviewed.clear();
+    });
+    _showNextCard();
+  }
+
 
   void _reveal() {
     setState(() {
@@ -2311,18 +2371,159 @@ class _LearningScreenState extends State<LearningScreen> {
     await flutterTts.setLanguage(locale);
   }
 
-  Future<void> _speak() async {
-    if (currentCard != null) {
-      if (isEnToCz) {
-        // Vidím cizí jazyk, chci slyšet CZ (odpověď)
-        await _setVoiceForLocale(widget.langConfig.nativeTtsLocale);
-        await flutterTts.speak(currentCard!.cz);
-      } else {
-        // Vidím CZ, chci slyšet cizí jazyk (odpověď)
-        await _setVoiceForLocale(widget.langConfig.ttsLocale);
-        await flutterTts.speak(currentCard!.en);
+  Future<bool> _hasNativeVoice(String locale) async {
+    try {
+      final voices = await flutterTts.getVoices;
+      final shortCode = locale.split('-').first.toLowerCase();
+      return (voices as List).any((v) =>
+        v['locale'].toString().toLowerCase().startsWith(shortCode));
+    } catch (_) {
+      return true; // can't check → assume yes
+    }
+  }
+
+  Future<void> _checkTtsVoiceAndWarn(String locale) async {
+    final has = await _hasNativeVoice(locale);
+    if (!has && mounted) {
+      final isGerman = locale.toLowerCase().startsWith('de');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          duration: const Duration(seconds: 6),
+          content: Text(
+            isGerman
+                ? 'Tvoje zařízení nemá německý hlas - výslovnost nebude správná. '
+                  'Nainstaluj německý jazykový balíček (Android: Nastavení → '
+                  'Jazyk → TTS → Google → stáhnout němčinu).'
+                : 'Tvoje zařízení nemá hlas pro tento jazyk - výslovnost nebude správná.',
+          ),
+          backgroundColor: Colors.orange[700],
+        ),
+      );
+    }
+  }
+
+  void _showTtsError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        duration: const Duration(seconds: 4),
+        content: Text(message),
+        backgroundColor: Colors.orange[700],
+      ),
+    );
+  }
+
+  Future<bool> _playCloudTts(String text, String lang) async {
+    if (!kIsWeb) return false;
+    // Cloud TTS only supports de-DE and en-US
+    String cloudLang;
+    if (lang.toLowerCase().startsWith('de')) {
+      cloudLang = 'de-DE';
+    } else if (lang.toLowerCase().startsWith('en')) {
+      cloudLang = 'en-US';
+    } else {
+      return false; // Czech and others fall back silently
+    }
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString(AuthService.kTokenKey);
+    if (token == null || token.isEmpty) return false;
+
+    final uri = Uri.base.resolve('api/tts.php').replace(queryParameters: {
+      'text': text,
+      'lang': cloudLang,
+      'token': token,
+    });
+
+    final stopwatch = Stopwatch()..start();
+    http.Response res;
+    try {
+      res = await http.get(uri).timeout(const Duration(seconds: 10));
+    } catch (e) {
+      stopwatch.stop();
+      debugPrint('[TTS] FAIL  word="$text"  lang="$cloudLang"  network error: $e  duration=${stopwatch.elapsedMilliseconds}ms');
+      debugPrint('[TTS] Falling back to flutter_tts ($cloudLang)');
+      _showTtsError('Nelze se spojit se serverem (lokální fallback)');
+      return false;
+    }
+    stopwatch.stop();
+
+    final contentType = res.headers['content-type'] ?? '';
+    if (res.statusCode == 200 && contentType.startsWith('audio/')) {
+      try {
+        await flutterTts.stop();
+        await web_audio.playMp3Bytes(res.bodyBytes);
+        return true;
+      } catch (e) {
+        debugPrint('[TTS] FAIL playback: $e');
+        _showTtsError('Chyba při přehrávání zvuku (lokální fallback)');
+        return false;
       }
     }
+
+    // Error path - parse JSON and show specific message
+    String? errorCode;
+    try {
+      final data = json.decode(res.body) as Map<String, dynamic>;
+      errorCode = data['error'] as String?;
+    } catch (_) {}
+
+    debugPrint('[TTS] FAIL  word="$text"  lang="$cloudLang"  url="${uri.path}"');
+    debugPrint('[TTS] HTTP ${res.statusCode}  body=${res.body}  duration=${stopwatch.elapsedMilliseconds}ms');
+    debugPrint('[TTS] Falling back to flutter_tts ($cloudLang)');
+
+    switch (res.statusCode) {
+      case 401:
+        _showTtsError('Přihlášení vypršelo, přihlas se znovu');
+        // Clear token and redirect to login
+        await prefs.remove(AuthService.kTokenKey);
+        await prefs.remove(AuthService.kEmailKey);
+        if (mounted) {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const AuthGate()),
+            (_) => false,
+          );
+        }
+        return true; // don't fallback - user is being redirected
+      case 400:
+        if (errorCode == 'invalid_lang') {
+          _showTtsError('Tento jazyk neumíme přečíst (lokální fallback)');
+        } else if (errorCode == 'invalid_text') {
+          _showTtsError('Slovo obsahuje nepodporované znaky');
+        } else {
+          _showTtsError('Cloud TTS chyba: HTTP 400');
+        }
+        return false;
+      case 429:
+        _showTtsError('Příliš mnoho přehrání, počkej minutu');
+        return false;
+      case 500:
+        _showTtsError('Cloud hlas momentálně nedostupný (lokální fallback)');
+        return false;
+      default:
+        _showTtsError('Cloud TTS chyba: HTTP ${res.statusCode}');
+        return false;
+    }
+  }
+
+  Future<void> _speak() async {
+    if (currentCard == null) return;
+    final text = isEnToCz ? currentCard!.cz : currentCard!.en;
+    final locale = isEnToCz
+        ? widget.langConfig.nativeTtsLocale
+        : widget.langConfig.ttsLocale;
+
+    // Try cloud TTS first on web
+    if (kIsWeb) {
+      final ok = await _playCloudTts(text, locale);
+      if (ok) return;
+    }
+
+    // Fallback to local flutter_tts
+    if (!isEnToCz) {
+      await _checkTtsVoiceAndWarn(locale);
+    }
+    await _setVoiceForLocale(locale);
+    await flutterTts.speak(text);
   }
 
   void _rate(int rating) {
@@ -2330,12 +2531,21 @@ class _LearningScreenState extends State<LearningScreen> {
 
     final prog = _getCardProgress(currentCard!);
     final today = DateTime.now().toIso8601String().split('T')[0];
+    final key = _getCardKey(currentCard!);
 
-    // SM-2 algorithm
     if (rating < 3) {
-      prog.repetitions = 0;
+      // Těžké → červená (Těžká), ne šedá. Repetitions držíme na 1+ aby
+      // barva byla červená (interval==1, repetitions>0).
+      prog.repetitions = 1;
       prog.interval = 1;
+      prog.ease = max(1.3, prog.ease - 0.2);
+    } else if (rating == 4 && _boostMode) {
+      // Boost: Snadné skočí rovnou do "Naučená"
+      prog.repetitions = 10;
+      prog.interval = 90;
+      prog.ease = 2.8;
     } else {
+      // Standardní SM-2 progression (Snadné v normálním režimu)
       if (prog.repetitions == 0) {
         prog.interval = 1;
       } else if (prog.repetitions == 1) {
@@ -2344,14 +2554,15 @@ class _LearningScreenState extends State<LearningScreen> {
         prog.interval = (prog.interval * prog.ease).round();
       }
       prog.repetitions++;
+      prog.ease = max(1.3, prog.ease + (0.1 - (5 - rating) * (0.08 + (5 - rating) * 0.02)));
     }
-
-    prog.ease = max(1.3, prog.ease + (0.1 - (5 - rating) * (0.08 + (5 - rating) * 0.02)));
 
     final nextDate = DateTime.now().add(Duration(days: prog.interval));
     prog.nextReview = nextDate.toIso8601String().split('T')[0];
     prog.lastReview = today;
 
+    // Označit kartičku jako "viděnou v této relaci" - znovu se neukáže
+    _sessionReviewed.add(key);
     todayReviewed++;
 
     widget.onSaveProgress();
@@ -2396,11 +2607,20 @@ class _LearningScreenState extends State<LearningScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final dueCards = _getDueCards();
     final learned = widget.cards.where((c) => _getCardProgress(c).repetitions > 0).length;
     final progressPercent = widget.cards.isNotEmpty ? learned / widget.cards.length : 0.0;
 
-    return Scaffold(
+    // V boost módu po 1. kole počítáme jen ne-Naučené karty (jmenovatel)
+    final notLearnedCount = widget.cards.where((c) => _getCardProgress(c).interval <= 21).length;
+    final sessionDenominator = (_boostMode && _boostFirstRoundDone)
+        ? notLearnedCount
+        : widget.cards.length;
+
+    return Focus(
+      autofocus: true,
+      focusNode: _keyboardFocus,
+      onKeyEvent: _onKeyEvent,
+      child: Scaffold(
       appBar: AppBar(
         title: Text(widget.title),
         backgroundColor: Colors.transparent,
@@ -2418,8 +2638,11 @@ class _LearningScreenState extends State<LearningScreen> {
           child: Column(
             children: [
               Text(
-                'K opakování: ${dueCards.length} | Naučeno: $learned/${widget.cards.length} | Dnes: $todayReviewed',
-                style: TextStyle(color: Colors.grey[500], fontSize: 14),
+                _boostMode
+                    ? '🔥 BOOST · Kolo ${_sessionReviewed.length}/$sessionDenominator · Naučeno $learned/${widget.cards.length}'
+                    : 'Relace ${_sessionReviewed.length}/$sessionDenominator · Naučeno $learned/${widget.cards.length}',
+                style: TextStyle(color: Colors.grey[500], fontSize: 13),
+                textAlign: TextAlign.center,
               ),
               const SizedBox(height: 10),
 
@@ -2448,50 +2671,33 @@ class _LearningScreenState extends State<LearningScreen> {
               const SizedBox(height: 20),
 
               if (currentCard != null) ...[
-                if (!showTranslation) ...[
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      _buildIconButton(Icons.volume_up, _speak),
-                      const SizedBox(width: 20),
-                      Expanded(
-                        child: ElevatedButton(
-                          onPressed: _reveal,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF00D9FF),
-                            foregroundColor: const Color(0xFF1A1A2E),
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                          child: const Text('Ukázat překlad', style: TextStyle(fontSize: 16)),
-                        ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    Expanded(
+                      child: _buildRatingButton(
+                        'Těžké',
+                        const Color(0xFFE74C3C),
+                        () => _rate(1),
                       ),
-                    ],
-                  ),
-                ] else ...[
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      _buildIconButton(Icons.volume_up, _speak),
-                    ],
-                  ),
-                  const SizedBox(height: 15),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      _buildRatingButton('Znovu', const Color(0xFFE74C3C), () => _rate(1)),
-                      _buildRatingButton('Těžké', const Color(0xFFF39C12), () => _rate(2)),
-                      _buildRatingButton('Dobře', const Color(0xFF27AE60), () => _rate(3)),
-                      _buildRatingButton('Snadné', const Color(0xFF3498DB), () => _rate(4)),
-                    ],
-                  ),
-                ],
+                    ),
+                    const SizedBox(width: 12),
+                    _buildIconButton(Icons.volume_up, _speakAndReveal),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _buildRatingButton(
+                        'Snadné',
+                        const Color(0xFF3498DB),
+                        () => _rate(4),
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ],
           ),
         ),
+      ),
       ),
     );
   }
@@ -2541,8 +2747,22 @@ class _LearningScreenState extends State<LearningScreen> {
 
   Widget _buildCard() {
     if (currentCard == null) {
-      final nextInfo = _getNextReviewInfo();
-      final message = todayReviewed > 0 ? '🎉 Hotovo na dnes!' : '📚 Žádné kartičky na dnes';
+      final allLearned = widget.cards.isNotEmpty &&
+          widget.cards.every((c) => _getCardProgress(c).interval > 21);
+      final allReviewed = _sessionReviewed.length >= widget.cards.length && widget.cards.isNotEmpty;
+      // Boost je k dispozici vždy v normálním režimu (i když jsou všechny Naučené,
+      // můžeš si jimi projet pro připomenutí).
+      final canBoost = !_boostMode && widget.cards.isNotEmpty;
+      final nextInfo = allLearned && !_boostMode
+          ? '💙 Vše modré - klikni Boost pro připomenutí'
+          : (allReviewed && !_boostMode)
+              ? '👋 Vrať se příště na další procvičování'
+              : _getNextReviewInfo();
+      final message = allLearned
+          ? '🎉 Všechny kartičky Naučené!'
+          : _boostMode
+              ? '🔥 Boost dokončen!'
+              : (todayReviewed > 0 ? '🎉 Hotovo na dnes!' : '📚 Žádné kartičky na dnes');
 
       return Container(
         decoration: BoxDecoration(
@@ -2550,19 +2770,44 @@ class _LearningScreenState extends State<LearningScreen> {
           borderRadius: BorderRadius.circular(16),
         ),
         child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                message,
-                style: const TextStyle(fontSize: 24),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                nextInfo,
-                style: TextStyle(fontSize: 16, color: Colors.grey[400]),
-              ),
-            ],
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  message,
+                  style: const TextStyle(fontSize: 24),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  nextInfo,
+                  style: TextStyle(fontSize: 16, color: Colors.grey[400]),
+                  textAlign: TextAlign.center,
+                ),
+                if (canBoost) ...[
+                  const SizedBox(height: 32),
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.local_fire_department),
+                    label: const Text('Boost před lekcí'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFFFD700),
+                      foregroundColor: Colors.black,
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                      textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                    onPressed: _startBoost,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Projde i kartičky které ještě nejsou splatné',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ],
+            ),
           ),
         ),
       );
@@ -2636,19 +2881,28 @@ class _LearningScreenState extends State<LearningScreen> {
     );
   }
 
-  Widget _buildRatingButton(String text, Color color, VoidCallback onPressed) {
+  Widget _buildRatingButton(String text, Color color, VoidCallback? onPressed) {
     return ElevatedButton(
       onPressed: onPressed,
       style: ElevatedButton.styleFrom(
         backgroundColor: color,
         foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        disabledBackgroundColor: color.withValues(alpha: 0.3),
+        disabledForegroundColor: Colors.white70,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(8),
         ),
       ),
-      child: Text(text),
+      child: Text(text, style: const TextStyle(fontSize: 16)),
     );
+  }
+
+  Future<void> _speakAndReveal() async {
+    if (!showTranslation) {
+      _reveal();
+    }
+    await _speak();
   }
 }
 
@@ -2733,9 +2987,11 @@ class CardsOverviewScreen extends StatelessWidget {
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Wrap(
+              spacing: 12,
+              runSpacing: 6,
+              alignment: WrapAlignment.center,
               children: [
                 _buildLegendItem(Colors.grey[700]!, 'Nová'),
                 _buildLegendItem(const Color(0xFFE74C3C), 'Těžká'),
@@ -2746,22 +3002,48 @@ class CardsOverviewScreen extends StatelessWidget {
             ),
           ),
           Expanded(
-            child: GridView.builder(
-              padding: const EdgeInsets.all(8),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 8,
-                crossAxisSpacing: 4,
-                mainAxisSpacing: 4,
-              ),
+            child: ListView.builder(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               itemCount: cards.length,
               itemBuilder: (context, index) {
                 final card = cards[index];
+                final color = getCardColor(card);
                 return GestureDetector(
                   onTap: () => _showCardDetail(context, card),
                   child: Container(
+                    margin: const EdgeInsets.symmetric(vertical: 2),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                     decoration: BoxDecoration(
-                      color: getCardColor(card),
-                      borderRadius: BorderRadius.circular(4),
+                      color: color.withValues(alpha: 0.18),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border(
+                        left: BorderSide(color: color, width: 4),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          flex: 5,
+                          child: Text(
+                            card.en,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          flex: 5,
+                          child: Text(
+                            card.cz,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Color(0xFF00D9FF),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 );
@@ -2801,59 +3083,75 @@ class NemeckySUsmevemScreen extends StatefulWidget {
 
 class _NemeckySUsmevemScreenState extends State<NemeckySUsmevemScreen> {
   List<NemeckySUsmevemLesson> lessons = [];
-  Set<int> selectedLessons = {};
+  Map<int, List<FlashCard>> lessonCards = {};
   bool isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _loadManifest();
+    _loadAll();
   }
 
-  Future<void> _loadManifest() async {
+  Future<void> _loadAll() async {
     try {
       final manifestStr = await rootBundle.loadString('assets/nemecky_s_usmevem/manifest.json');
       final manifest = json.decode(manifestStr) as Map<String, dynamic>;
       final list = manifest['lessons'] as List;
+      final loaded = list.map((l) => NemeckySUsmevemLesson(
+        number: l['number'] as int,
+        title: l['title'] as String,
+        file: l['file'] as String,
+      )).toList();
+
+      final Map<int, List<FlashCard>> cards = {};
+      for (final lesson in loaded) {
+        try {
+          final str = await rootBundle.loadString('assets/nemecky_s_usmevem/${lesson.file}');
+          final data = json.decode(str) as Map<String, dynamic>;
+          final List<FlashCard> all = [];
+          final cardsList = data['cards'] as List? ?? [];
+          for (final c in cardsList) {
+            all.add(FlashCard(
+              en: c['de'] as String,
+              cz: c['cz'] as String,
+              category: 'Lekce ${lesson.number}',
+            ));
+          }
+          final vazby = data['vazby'] as List? ?? [];
+          for (final v in vazby) {
+            all.add(FlashCard(
+              en: v['de'] as String,
+              cz: v['cz'] as String,
+              category: 'Lekce ${lesson.number} - vazby',
+            ));
+          }
+          cards[lesson.number] = all;
+        } catch (_) {
+          cards[lesson.number] = [];
+        }
+      }
+
       setState(() {
-        lessons = list.map((l) => NemeckySUsmevemLesson(
-          number: l['number'] as int,
-          title: l['title'] as String,
-          file: l['file'] as String,
-        )).toList();
+        lessons = loaded;
+        lessonCards = cards;
         isLoading = false;
       });
-    } catch (e) {
+    } catch (_) {
       setState(() => isLoading = false);
     }
   }
 
-  Future<List<FlashCard>> _loadSelectedCards() async {
-    final List<FlashCard> all = [];
-    for (final lesson in lessons) {
-      if (!selectedLessons.contains(lesson.number)) continue;
-      try {
-        final str = await rootBundle.loadString('assets/nemecky_s_usmevem/${lesson.file}');
-        final data = json.decode(str) as Map<String, dynamic>;
-        final cards = data['cards'] as List? ?? [];
-        for (final c in cards) {
-          all.add(FlashCard(
-            en: c['de'] as String,
-            cz: c['cz'] as String,
-            category: 'Lekce ${lesson.number}',
-          ));
-        }
-        final vazby = data['vazby'] as List? ?? [];
-        for (final v in vazby) {
-          all.add(FlashCard(
-            en: v['de'] as String,
-            cz: v['cz'] as String,
-            category: 'Lekce ${lesson.number} - vazby',
-          ));
-        }
-      } catch (_) {}
+  String _cardKey(FlashCard card) => card.en.substring(0, min(50, card.en.length));
+
+  double _lessonProgress(int lessonNumber) {
+    final cards = lessonCards[lessonNumber] ?? [];
+    if (cards.isEmpty) return 0.0;
+    int learned = 0;
+    for (final c in cards) {
+      final p = widget.progress[_cardKey(c)];
+      if (p != null && p.repetitions >= 2) learned++;
     }
-    return all;
+    return learned / cards.length;
   }
 
   @override
@@ -2876,8 +3174,7 @@ class _NemeckySUsmevemScreenState extends State<NemeckySUsmevemScreen> {
                       border: Border.all(color: Colors.orange.withValues(alpha: 0.5)),
                     ),
                     child: const Text(
-                      '⚠️ Obsah pochází z učebnice "Německy s úsměvem - nově" '
-                      '(Fraus 2003). Použito pouze pro osobní studium v rámci '
+                      '⚠️ Obsah z učebnice používáme pouze pro osobní studium v rámci '
                       'soukromé skupiny. Není povoleno volné šíření.',
                       style: TextStyle(fontSize: 12),
                     ),
@@ -2888,62 +3185,983 @@ class _NemeckySUsmevemScreenState extends State<NemeckySUsmevemScreen> {
                     itemCount: lessons.length,
                     itemBuilder: (context, index) {
                       final lesson = lessons[index];
-                      final isSelected = selectedLessons.contains(lesson.number);
-                      return CheckboxListTile(
-                        value: isSelected,
-                        onChanged: (val) {
-                          setState(() {
-                            if (val == true) {
-                              selectedLessons.add(lesson.number);
-                            } else {
-                              selectedLessons.remove(lesson.number);
-                            }
-                          });
-                        },
-                        title: Text('Lekce ${lesson.number}: ${lesson.title}'),
+                      final cards = lessonCards[lesson.number] ?? [];
+                      final cardsCount = cards.length;
+                      final progressValue = _lessonProgress(lesson.number);
+                      final accentColor = progressValue >= 0.9
+                          ? const Color(0xFF00FF88)
+                          : progressValue >= 0.5
+                              ? Colors.orange
+                              : const Color(0xFF00D9FF);
+                      return Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: accentColor.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: accentColor.withValues(alpha: 0.4)),
+                        ),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(10),
+                          onTap: () async {
+                            if (cards.isEmpty) return;
+                            await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => LearningScreen(
+                                  title: 'Lekce ${lesson.number}',
+                                  cards: cards,
+                                  progress: widget.progress,
+                                  onSaveProgress: widget.onSaveProgress,
+                                  langConfig: widget.langConfig,
+                                ),
+                              ),
+                            );
+                            if (mounted) setState(() {});
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.all(14),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        'Lekce ${lesson.number}: ${lesson.title}',
+                                        style: const TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                    Text(
+                                      '${(progressValue * 100).toInt()}%',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: progressValue >= 0.9
+                                            ? const Color(0xFF00FF88)
+                                            : progressValue >= 0.5
+                                                ? Colors.orange
+                                                : Colors.grey,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  '$cardsCount kartiček',
+                                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                ),
+                                const SizedBox(height: 8),
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(4),
+                                  child: LinearProgressIndicator(
+                                    value: progressValue,
+                                    backgroundColor: Colors.grey[800],
+                                    valueColor: AlwaysStoppedAnimation<Color>(accentColor),
+                                    minHeight: 6,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                       );
                     },
                   ),
                 ),
-                if (selectedLessons.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        icon: const Icon(Icons.school),
-                        label: Text('Učit se (${selectedLessons.length} ${selectedLessons.length == 1 ? "lekce" : "lekcí"})'),
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          backgroundColor: const Color(0xFF00FF88),
-                          foregroundColor: Colors.black,
-                        ),
-                        onPressed: () async {
-                          final cards = await _loadSelectedCards();
-                          if (cards.isEmpty) return;
-                          if (!mounted) return;
-                          final selectedNumbers = selectedLessons.toList()..sort();
-                          final title = selectedNumbers.length == 1
-                              ? 'Lekce ${selectedNumbers.first}'
-                              : 'Lekce ${selectedNumbers.join(", ")}';
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => LearningScreen(
-                                title: title,
-                                cards: cards,
-                                progress: widget.progress,
-                                onSaveProgress: widget.onSaveProgress,
-                                langConfig: widget.langConfig,
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ),
               ],
             ),
+    );
+  }
+}
+
+// ===== Backend Auth Service =====
+
+class ApiResult {
+  final int statusCode;
+  final Map<String, dynamic>? body;
+  ApiResult(this.statusCode, this.body);
+}
+
+class AuthService {
+  static const String kTokenKey = 'auth_token';
+  static const String kEmailKey = 'auth_email';
+  static const String kBackendBase = 'https://petrovelektronika.cz/LangCards/';
+
+  static Uri _api(String endpoint) {
+    if (kIsWeb) {
+      // Same-origin: relativní URL
+      return Uri.base.resolve('api/$endpoint');
+    }
+    // Mobile: plné URL
+    return Uri.parse('${kBackendBase}api/$endpoint');
+  }
+
+  static Future<ApiResult> _request(String method, String endpoint, {Map<String, dynamic>? body, String? token}) async {
+    final uri = _api(endpoint);
+    final headers = <String, String>{
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      if (token != null) 'Authorization': 'Bearer $token',
+    };
+    final http.Response res;
+    if (method == 'POST') {
+      res = await http.post(uri, headers: headers, body: body != null ? json.encode(body) : null);
+    } else {
+      res = await http.get(uri, headers: headers);
+    }
+    Map<String, dynamic>? data;
+    try {
+      data = json.decode(res.body) as Map<String, dynamic>;
+    } catch (_) {}
+    return ApiResult(res.statusCode, data);
+  }
+
+  static Future<ApiResult> register(String email, String password) =>
+      _request('POST', 'register.php', body: {'email': email, 'password': password});
+
+  static Future<ApiResult> login(String email, String password) =>
+      _request('POST', 'login.php', body: {'email': email, 'password': password});
+
+  static Future<ApiResult> uploadBackup(String token, Map<String, dynamic> data) =>
+      _request('POST', 'backup.php', body: data, token: token);
+
+  static Future<ApiResult> downloadBackup(String token) =>
+      _request('GET', 'backup.php', token: token);
+
+  static Future<ApiResult> getAdminUsers(String token) =>
+      _request('GET', 'admin_users.php', token: token);
+}
+
+// ===== Login Screen =====
+
+class LoginScreen extends StatefulWidget {
+  final SharedPreferences prefs;
+  final VoidCallback onLoggedIn;
+
+  const LoginScreen({super.key, required this.prefs, required this.onLoggedIn});
+
+  @override
+  State<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends State<LoginScreen> {
+  final emailController = TextEditingController();
+  final passwordController = TextEditingController();
+  String? error;
+  bool isLoading = false;
+  bool obscurePassword = true;
+  bool registered = false;
+  String registeredEmail = '';
+
+  Future<void> _login() async {
+    final email = emailController.text.trim().toLowerCase();
+    final password = passwordController.text;
+    if (email.isEmpty || password.isEmpty) {
+      setState(() => error = 'Vyplňte email i heslo');
+      return;
+    }
+    setState(() {
+      isLoading = true;
+      error = null;
+    });
+    try {
+      final res = await AuthService.login(email, password);
+      if (!mounted) return;
+      if (res.statusCode == 200 && res.body != null) {
+        final token = res.body!['token'] as String;
+        final returnedEmail = (res.body!['email'] as String?) ?? email;
+        await widget.prefs.setString(AuthService.kTokenKey, token);
+        await widget.prefs.setString(AuthService.kEmailKey, returnedEmail);
+        widget.onLoggedIn();
+      } else if (res.statusCode == 401) {
+        setState(() => error = 'Nesprávný e-mail nebo heslo.');
+      } else if (res.statusCode == 403) {
+        setState(() => error = 'E-mail ještě nebyl ověřen. Zkontroluj inbox (i spam).');
+      } else {
+        setState(() => error = 'Chyba při přihlášení (${res.statusCode}).');
+      }
+    } catch (e) {
+      if (mounted) setState(() => error = 'Chyba spojení: $e');
+    } finally {
+      if (mounted) setState(() => isLoading = false);
+    }
+  }
+
+  Future<void> _register() async {
+    final email = emailController.text.trim().toLowerCase();
+    final password = passwordController.text;
+    if (email.isEmpty || password.isEmpty) {
+      setState(() => error = 'Vyplňte email i heslo');
+      return;
+    }
+    setState(() {
+      isLoading = true;
+      error = null;
+    });
+    try {
+      final res = await AuthService.register(email, password);
+      if (!mounted) return;
+      if (res.statusCode == 200) {
+        setState(() {
+          registered = true;
+          registeredEmail = email;
+        });
+      } else if (res.statusCode == 409) {
+        setState(() => error = 'Tento e-mail je už registrovaný — přihlas se.');
+      } else if (res.statusCode == 400) {
+        final err = res.body?['error'] ?? '';
+        setState(() => error = err == 'invalid_email'
+            ? 'Neplatný e-mail.'
+            : 'Heslo musí mít minimálně 8 znaků.');
+      } else {
+        setState(() => error = 'Chyba při registraci (${res.statusCode}).');
+      }
+    } catch (e) {
+      if (mounted) setState(() => error = 'Chyba spojení: $e');
+    } finally {
+      if (mounted) setState(() => isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (registered) {
+      return Scaffold(
+        body: SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    const SizedBox(height: 48),
+                    const Icon(Icons.email_outlined, size: 80, color: Color(0xFF00FF88)),
+                    const SizedBox(height: 24),
+                    Text(
+                      'Poslali jsme ověřovací e-mail na $registeredEmail.',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Klikni na odkaz a poté se přihlas. Mail může být ve spamu.',
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 32),
+                    ElevatedButton(
+                      onPressed: () => setState(() {
+                        registered = false;
+                        error = null;
+                      }),
+                      child: const Text('Zpět na přihlášení'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Scaffold(
+      body: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const SizedBox(height: 48),
+                  const Text('LangCards',
+                      style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  const Text('Aplikace pro učení cizích jazyků',
+                      style: TextStyle(fontSize: 14, color: Colors.grey)),
+                  const SizedBox(height: 40),
+                  TextField(
+                    controller: emailController,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: const InputDecoration(labelText: 'Email'),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: passwordController,
+                    obscureText: obscurePassword,
+                    decoration: InputDecoration(
+                      labelText: 'Heslo',
+                      suffixIcon: IconButton(
+                        icon: Icon(obscurePassword ? Icons.visibility : Icons.visibility_off),
+                        tooltip: obscurePassword ? 'Zobrazit heslo' : 'Skrýt heslo',
+                        onPressed: () => setState(() => obscurePassword = !obscurePassword),
+                      ),
+                    ),
+                    onSubmitted: (_) => _login(),
+                  ),
+                  if (error != null) ...[
+                    const SizedBox(height: 16),
+                    Text(error!, style: const TextStyle(color: Colors.red)),
+                  ],
+                  const SizedBox(height: 24),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: isLoading ? null : _login,
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            backgroundColor: const Color(0xFF00FF88),
+                            foregroundColor: Colors.black,
+                          ),
+                          child: const Text('Přihlásit'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: isLoading ? null : _register,
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                          ),
+                          child: const Text('Registrovat'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (isLoading) ...[
+                    const SizedBox(height: 24),
+                    const CircularProgressIndicator(),
+                  ],
+                  const SizedBox(height: 24),
+                  const Text(
+                    'Heslo musí mít minimálně 8 znaků. Po registraci ti pošleme '
+                    'ověřovací e-mail.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ===== Auth Gate (decides login vs home) =====
+
+class AuthGate extends StatefulWidget {
+  const AuthGate({super.key});
+
+  @override
+  State<AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<AuthGate> {
+  SharedPreferences? prefs;
+  bool isLoading = true;
+  bool isLoggedIn = false;
+  Map<String, dynamic>? remoteBackup;
+
+  @override
+  void initState() {
+    super.initState();
+    _check();
+  }
+
+  Future<void> _check() async {
+    final p = await SharedPreferences.getInstance();
+    final token = p.getString(AuthService.kTokenKey);
+    if (token == null || token.isEmpty) {
+      setState(() {
+        prefs = p;
+        isLoading = false;
+        isLoggedIn = false;
+      });
+      return;
+    }
+    try {
+      final res = await AuthService.downloadBackup(token);
+      if (res.statusCode == 200) {
+        setState(() {
+          prefs = p;
+          isLoading = false;
+          isLoggedIn = true;
+          remoteBackup = res.body;
+        });
+      } else if (res.statusCode == 404) {
+        setState(() {
+          prefs = p;
+          isLoading = false;
+          isLoggedIn = true;
+        });
+      } else if (res.statusCode == 401) {
+        await p.remove(AuthService.kTokenKey);
+        await p.remove(AuthService.kEmailKey);
+        setState(() {
+          prefs = p;
+          isLoading = false;
+          isLoggedIn = false;
+        });
+      } else {
+        setState(() {
+          prefs = p;
+          isLoading = false;
+          isLoggedIn = true;
+        });
+      }
+    } catch (_) {
+      setState(() {
+        prefs = p;
+        isLoading = false;
+        isLoggedIn = true;
+      });
+    }
+  }
+
+  void _handleLoggedIn() {
+    setState(() {
+      isLoading = true;
+    });
+    _check();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (isLoading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    if (!isLoggedIn) {
+      return LoginScreen(prefs: prefs!, onLoggedIn: _handleLoggedIn);
+    }
+    return HomeScreen(remoteBackup: remoteBackup);
+  }
+}
+
+// ===== Admin Screen =====
+
+class AdminScreen extends StatefulWidget {
+  const AdminScreen({super.key});
+
+  @override
+  State<AdminScreen> createState() => _AdminScreenState();
+}
+
+class _AdminScreenState extends State<AdminScreen> {
+  bool isLoading = true;
+  String? error;
+  List<Map<String, dynamic>> users = [];
+  int totalUsers = 0;
+  int verifiedUsers = 0;
+
+  int _sortColumnIndex = 2; // last_login_at by default
+  bool _sortAscending = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString(AuthService.kTokenKey);
+    if (token == null || token.isEmpty) {
+      if (mounted) setState(() {
+        isLoading = false;
+        error = 'Nejste přihlášen.';
+      });
+      return;
+    }
+    try {
+      final res = await AuthService.getAdminUsers(token);
+      if (!mounted) return;
+      if (res.statusCode == 200 && res.body != null) {
+        final data = res.body!;
+        final list = (data['users'] as List? ?? [])
+            .map((u) => Map<String, dynamic>.from(u as Map))
+            .toList();
+        setState(() {
+          users = list;
+          totalUsers = (data['total_users'] as int?) ?? list.length;
+          verifiedUsers = (data['verified_users'] as int?) ?? 0;
+          isLoading = false;
+        });
+        _sortUsers();
+      } else if (res.statusCode == 401) {
+        await prefs.remove(AuthService.kTokenKey);
+        await prefs.remove(AuthService.kEmailKey);
+        if (mounted) {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const AuthGate()),
+            (_) => false,
+          );
+        }
+      } else if (res.statusCode == 403) {
+        setState(() {
+          isLoading = false;
+          error = 'Nemáte oprávnění (forbidden).';
+        });
+      } else {
+        setState(() {
+          isLoading = false;
+          error = 'Chyba: HTTP ${res.statusCode}';
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() {
+        isLoading = false;
+        error = 'Chyba spojení: $e';
+      });
+    }
+  }
+
+  void _sortUsers() {
+    users.sort((a, b) {
+      Object? va;
+      Object? vb;
+      switch (_sortColumnIndex) {
+        case 0:
+          va = a['email'];
+          vb = b['email'];
+          break;
+        case 1:
+          va = a['registered_at'];
+          vb = b['registered_at'];
+          break;
+        case 2:
+          va = a['last_login_at'];
+          vb = b['last_login_at'];
+          break;
+        case 3:
+          va = a['last_backup_at'];
+          vb = b['last_backup_at'];
+          break;
+        case 4:
+          va = a['backup_size_bytes'];
+          vb = b['backup_size_bytes'];
+          break;
+      }
+      final av = va ?? '';
+      final bv = vb ?? '';
+      final cmp = Comparable.compare(
+        av is Comparable ? av : av.toString(),
+        bv is Comparable ? bv : bv.toString(),
+      );
+      return _sortAscending ? cmp : -cmp;
+    });
+  }
+
+  void _onSort(int idx, bool asc) {
+    setState(() {
+      _sortColumnIndex = idx;
+      _sortAscending = asc;
+      _sortUsers();
+    });
+  }
+
+  String _formatDate(String? iso) {
+    if (iso == null || iso.isEmpty) return '—';
+    final dt = DateTime.tryParse(iso);
+    if (dt == null) return iso;
+    final local = dt.toLocal();
+    return '${local.day}.${local.month}.${local.year} '
+        '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+  }
+
+  String _formatBytes(int? bytes) {
+    if (bytes == null || bytes == 0) return '—';
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    return '${(bytes / 1024 / 1024).toStringAsFixed(1)} MB';
+  }
+
+  Color _activityColor(String? lastLogin) {
+    if (lastLogin == null) return Colors.grey;
+    final dt = DateTime.tryParse(lastLogin);
+    if (dt == null) return Colors.grey;
+    final days = DateTime.now().difference(dt).inDays;
+    if (days <= 1) return const Color(0xFF00FF88);
+    if (days <= 7) return Colors.orange;
+    if (days <= 30) return const Color(0xFF00D9FF);
+    return Colors.grey;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Admin přehled'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Obnovit',
+            onPressed: _load,
+          ),
+        ],
+      ),
+      body: isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : error != null
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(error!, textAlign: TextAlign.center),
+                  ),
+                )
+              : Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        children: [
+                          _summaryCard('Celkem', totalUsers.toString(), const Color(0xFF00D9FF)),
+                          const SizedBox(width: 12),
+                          _summaryCard('Ověřených', verifiedUsers.toString(), const Color(0xFF00FF88)),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: SingleChildScrollView(
+                          child: DataTable(
+                            sortColumnIndex: _sortColumnIndex,
+                            sortAscending: _sortAscending,
+                            columns: [
+                              DataColumn(
+                                label: const Text('Email'),
+                                onSort: _onSort,
+                              ),
+                              DataColumn(
+                                label: const Text('Registrace'),
+                                onSort: _onSort,
+                              ),
+                              DataColumn(
+                                label: const Text('Poslední login'),
+                                onSort: _onSort,
+                              ),
+                              DataColumn(
+                                label: const Text('Poslední záloha'),
+                                onSort: _onSort,
+                              ),
+                              DataColumn(
+                                label: const Text('Velikost'),
+                                numeric: true,
+                                onSort: _onSort,
+                              ),
+                            ],
+                            rows: users.map((u) {
+                              final verified = u['verified'] == true;
+                              return DataRow(cells: [
+                                DataCell(Row(
+                                  children: [
+                                    Container(
+                                      width: 8,
+                                      height: 8,
+                                      decoration: BoxDecoration(
+                                        color: _activityColor(u['last_login_at'] as String?),
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(u['email']?.toString() ?? ''),
+                                    if (!verified) ...[
+                                      const SizedBox(width: 6),
+                                      const Icon(Icons.warning_amber, size: 14, color: Colors.orange),
+                                    ],
+                                  ],
+                                )),
+                                DataCell(Text(_formatDate(u['registered_at'] as String?))),
+                                DataCell(Text(_formatDate(u['last_login_at'] as String?))),
+                                DataCell(Text(_formatDate(u['last_backup_at'] as String?))),
+                                DataCell(Text(_formatBytes(u['backup_size_bytes'] as int?))),
+                              ]);
+                            }).toList(),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+    );
+  }
+
+  Widget _summaryCard(String label, String value, Color color) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.15),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: color.withValues(alpha: 0.4)),
+        ),
+        child: Column(
+          children: [
+            Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+            const SizedBox(height: 4),
+            Text(value, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: color)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ===== Prvouka pro Sofinku (hidden URL-gated section, no auth) =====
+
+class PrvoukaLesson {
+  final int number;
+  final String title;
+  final String file;
+  PrvoukaLesson({required this.number, required this.title, required this.file});
+}
+
+class PrvoukaHomeScreen extends StatefulWidget {
+  const PrvoukaHomeScreen({super.key});
+
+  @override
+  State<PrvoukaHomeScreen> createState() => _PrvoukaHomeScreenState();
+}
+
+class _PrvoukaHomeScreenState extends State<PrvoukaHomeScreen> {
+  static const LanguageConfig _langConfig = LanguageConfig(AppLanguage.cs);
+
+  late SharedPreferences prefs;
+  List<PrvoukaLesson> lessons = [];
+  Map<int, List<FlashCard>> lessonCards = {};
+  Map<String, CardProgress> progress = {};
+  bool isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAll();
+  }
+
+  Future<void> _loadAll() async {
+    prefs = await SharedPreferences.getInstance();
+
+    final progressJson = prefs.getString(_langConfig.progressKey);
+    if (progressJson != null) {
+      try {
+        final Map<String, dynamic> data = json.decode(progressJson);
+        data.forEach((key, value) {
+          progress[key] = CardProgress.fromJson(value);
+        });
+      } catch (_) {}
+    }
+
+    try {
+      final manifestStr = await rootBundle.loadString('assets/prvouka/manifest.json');
+      final manifest = json.decode(manifestStr) as Map<String, dynamic>;
+      final list = manifest['lessons'] as List;
+      final loaded = list.map((l) => PrvoukaLesson(
+            number: l['number'] as int,
+            title: l['title'] as String,
+            file: l['file'] as String,
+          )).toList();
+
+      final Map<int, List<FlashCard>> cards = {};
+      for (final lesson in loaded) {
+        try {
+          final str = await rootBundle.loadString('assets/prvouka/${lesson.file}');
+          final data = json.decode(str) as Map<String, dynamic>;
+          final List<FlashCard> all = [];
+          final cardsList = data['cards'] as List? ?? [];
+          for (final c in cardsList) {
+            all.add(FlashCard(
+              en: c['q'] as String,
+              cz: c['a'] as String,
+              category: 'Lekce ${lesson.number}: ${lesson.title}',
+            ));
+          }
+          cards[lesson.number] = all;
+        } catch (_) {
+          cards[lesson.number] = [];
+        }
+      }
+
+      if (!mounted) return;
+      setState(() {
+        lessons = loaded;
+        lessonCards = cards;
+        isLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => isLoading = false);
+    }
+  }
+
+  Future<void> _saveProgress() async {
+    final Map<String, dynamic> progressJson = {};
+    progress.forEach((key, value) {
+      progressJson[key] = value.toJson();
+    });
+    await prefs.setString(_langConfig.progressKey, json.encode(progressJson));
+  }
+
+  String _cardKey(FlashCard card) => card.en.substring(0, min(50, card.en.length));
+
+  double _lessonProgress(int lessonNumber) {
+    final cards = lessonCards[lessonNumber] ?? [];
+    if (cards.isEmpty) return 0.0;
+    int learned = 0;
+    for (final c in cards) {
+      final p = progress[_cardKey(c)];
+      if (p != null && p.repetitions >= 2) learned++;
+    }
+    return learned / cards.length;
+  }
+
+  int _lessonDueCount(int lessonNumber) {
+    final cards = lessonCards[lessonNumber] ?? [];
+    final today = DateTime.now().toIso8601String().split('T')[0];
+    int due = 0;
+    for (final c in cards) {
+      final p = progress[_cardKey(c)];
+      if (p == null || p.nextReview.compareTo(today) <= 0) due++;
+    }
+    return due;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final totalCards = lessonCards.values.fold<int>(0, (s, l) => s + l.length);
+    final totalDue = lessons.fold<int>(0, (s, l) => s + _lessonDueCount(l.number));
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Prvouka pro Sofinku 💜'),
+        centerTitle: true,
+      ),
+      body: SafeArea(
+        child: isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : lessons.isEmpty
+                ? const Center(child: Text('Žádné lekce'))
+                : Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF00D9FF).withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFF00D9FF).withValues(alpha: 0.3)),
+                          ),
+                          child: Text(
+                            '$totalCards otázek celkem · $totalDue k zopakování dnes',
+                            style: const TextStyle(fontSize: 13),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: ListView.builder(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          itemCount: lessons.length,
+                          itemBuilder: (context, index) {
+                            final lesson = lessons[index];
+                            final cards = lessonCards[lesson.number] ?? [];
+                            final dueCount = _lessonDueCount(lesson.number);
+                            final progressValue = _lessonProgress(lesson.number);
+                            final accentColor = progressValue >= 0.9
+                                ? const Color(0xFF00FF88)
+                                : progressValue >= 0.5
+                                    ? Colors.orange
+                                    : const Color(0xFF00D9FF);
+                            return Container(
+                              margin: const EdgeInsets.symmetric(vertical: 6),
+                              decoration: BoxDecoration(
+                                color: accentColor.withValues(alpha: 0.08),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: accentColor.withValues(alpha: 0.4)),
+                              ),
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(10),
+                                onTap: () async {
+                                  if (cards.isEmpty) return;
+                                  await Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => LearningScreen(
+                                        title: 'Lekce ${lesson.number}: ${lesson.title}',
+                                        cards: cards,
+                                        progress: progress,
+                                        onSaveProgress: _saveProgress,
+                                        langConfig: _langConfig,
+                                        initialIsEnToCz: true,
+                                      ),
+                                    ),
+                                  );
+                                  if (mounted) setState(() {});
+                                },
+                                child: Padding(
+                                  padding: const EdgeInsets.all(14),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              'Lekce ${lesson.number}: ${lesson.title}',
+                                              style: const TextStyle(
+                                                fontSize: 15,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ),
+                                          Text(
+                                            '${(progressValue * 100).toInt()}%',
+                                            style: TextStyle(
+                                              fontSize: 13,
+                                              color: progressValue >= 0.9
+                                                  ? const Color(0xFF00FF88)
+                                                  : progressValue >= 0.5
+                                                      ? Colors.orange
+                                                      : Colors.grey,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        '${cards.length} otázek · $dueCount k zopakování',
+                                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      ClipRRect(
+                                        borderRadius: BorderRadius.circular(4),
+                                        child: LinearProgressIndicator(
+                                          value: progressValue,
+                                          minHeight: 6,
+                                          backgroundColor: Colors.white12,
+                                          color: accentColor,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+      ),
     );
   }
 }

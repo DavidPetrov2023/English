@@ -1,0 +1,13 @@
+{
+  "lesson": 1,
+  "title": "Přírodniny, suroviny, výrobky",
+  "cards": [
+    {"q": "Co jsou přírodniny?", "a": "Vše, co vzniklo v přírodě bez zásahu člověka."},
+    {"q": "Jaké dva druhy přírodnin známe?", "a": "Živé a neživé přírodniny."},
+    {"q": "Uveď tři příklady živých přírodnin.", "a": "Strom, pampeliška, pták."},
+    {"q": "Uveď tři příklady neživých přírodnin.", "a": "Kameny, nerosty, ropa."},
+    {"q": "Co je surovina?", "a": "Materiál, který člověk vyrobí z přírodnin (např. dřevo, mouka)."},
+    {"q": "Co je lidský výrobek?", "a": "Věc, kterou člověk vyrobí ze surovin (např. nábytek, autíčko)."},
+    {"q": "Jak na sebe navazují přírodnina, surovina a výrobek?", "a": "Přírodnina → surovina → lidský výrobek."}
+  ]
+}

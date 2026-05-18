@@ -1,0 +1,24 @@
+{
+  "lesson": 2,
+  "title": "Horniny a nerosty",
+  "cards": [
+    {"q": "Co jsou horniny?", "a": "Neživé přírodniny složené z nerostů."},
+    {"q": "Co jsou nerosty?", "a": "Neživé přírodniny tvořené jednou látkou (chemickou sloučeninou). Nelze je dále dělit."},
+    {"q": "Kde se těží horniny?", "a": "V lomech nebo v hlubinných dolech."},
+    {"q": "Proč jsou horniny a nerosty důležité?", "a": "Jsou důležité pro naše hospodářství."},
+    {"q": "Mají všechny nerosty stejnou barvu a tvar?", "a": "Ne. Mají různou podobu, povrch i zbarvení."},
+    {"q": "Z kolika a kterých nerostů je složená žula?", "a": "Ze tří nerostů: slídy, křemene a živce."},
+    {"q": "Je žula tvrdá, nebo měkká hornina?", "a": "Tvrdá hornina."},
+    {"q": "Kde se žula těží?", "a": "V povrchových lomech."},
+    {"q": "K čemu se používá žula?", "a": "Ve stavebnictví — obklady domů, dlažební kostky, náhrobní desky, drť na štěrk."},
+    {"q": "K čemu se používá pískovec?", "a": "Jako stavební kámen a v sochařství."},
+    {"q": "K čemu se používá břidlice?", "a": "Na střešní krytinu, obklady a chodníky."},
+    {"q": "K čemu se používá vápenec?", "a": "Jako stavební dekorační kámen, při výrobě vápna a cementu."},
+    {"q": "K čemu se používá sůl kamenná?", "a": "V kuchyni a v chemickém průmyslu."},
+    {"q": "Co je čedič?", "a": "Tvrdá hornina sopečného původu, černé barvy. Používá se jako stavební kámen a dlažební kostky."},
+    {"q": "Která je nejznámější čedičová hora v ČR?", "a": "Říp."},
+    {"q": "Vyjmenuj čtyři vzácné nerosty.", "a": "Zlato, stříbro, český granát, diamant."},
+    {"q": "Co je magnetovec?", "a": "Železná ruda. Využívá se k výrobě železa a je silně magnetický."},
+    {"q": "Proč musíme chránit nerostné bohatství naší planety?", "a": "Protože je neobnovitelné."}
+  ]
+}

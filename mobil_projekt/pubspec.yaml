@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.4.1+13
+version: 1.5.1+15
 
 environment:
   sdk: ^3.5.4
@@ -36,6 +36,7 @@ dependencies:
   path_provider: ^2.1.5
   file_picker: ^8.1.6
   speech_to_text: ^7.0.0
+  http: ^1.2.2
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
@@ -87,6 +88,19 @@ flutter:
     - assets/grammar_de_C1.json
     - assets/nemecky_s_usmevem/manifest.json
     - assets/nemecky_s_usmevem/L01.json
+    - assets/nemecky_s_usmevem/L02.json
+    - assets/nemecky_s_usmevem/L03.json
+    - assets/nemecky_s_usmevem/L04.json
+    - assets/nemecky_s_usmevem/L05.json
+    - assets/nemecky_s_usmevem/L06.json
+    - assets/nemecky_s_usmevem/L07.json
+    - assets/nemecky_s_usmevem/L08.json
+    - assets/nemecky_s_usmevem/L09.json
+    - assets/nemecky_s_usmevem/L10.json
+    - assets/prvouka/manifest.json
+    - assets/prvouka/L01.json
+    - assets/prvouka/L02.json
+    - assets/prvouka/L03.json
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

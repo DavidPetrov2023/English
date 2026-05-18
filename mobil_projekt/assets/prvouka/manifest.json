@@ -1,0 +1,7 @@
+{
+  "lessons": [
+    {"number": 1, "title": "Přírodniny, suroviny, výrobky", "file": "L01.json"},
+    {"number": 2, "title": "Horniny a nerosty", "file": "L02.json"},
+    {"number": 3, "title": "Uhlí a ropa", "file": "L03.json"}
+  ]
+}
