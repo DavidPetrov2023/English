@@ -89,6 +89,141 @@ class LanguageConfig {
 final GlobalKey<ScaffoldMessengerState> _appMessengerKey =
     GlobalKey<ScaffoldMessengerState>();
 
+// ===== Backup status (sdílený mezi HomeScreen a LearningScreen) =====
+
+enum BackupStatus { disabled, empty, pending, syncing, synced, error }
+
+class BackupStatusController extends ChangeNotifier {
+  BackupStatus _status = BackupStatus.synced;
+  DateTime? _lastBackup;
+  String? _errorMessage;
+
+  BackupStatus get status => _status;
+  DateTime? get lastBackup => _lastBackup;
+  String? get errorMessage => _errorMessage;
+
+  void update(BackupStatus s, {DateTime? lastBackup, String? errorMessage}) {
+    _status = s;
+    if (lastBackup != null) _lastBackup = lastBackup;
+    _errorMessage = errorMessage;
+    notifyListeners();
+  }
+}
+
+final backupStatus = BackupStatusController();
+
+class BackupStatusIcon extends StatefulWidget {
+  final VoidCallback? onPressed;
+  final bool requiresAuth;
+  const BackupStatusIcon({super.key, this.onPressed, this.requiresAuth = true});
+
+  @override
+  State<BackupStatusIcon> createState() => _BackupStatusIconState();
+}
+
+class _BackupStatusIconState extends State<BackupStatusIcon>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _spin;
+  bool _hasAuth = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _spin = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    );
+    backupStatus.addListener(_onStatusChange);
+    _checkAuth();
+    _onStatusChange();
+  }
+
+  Future<void> _checkAuth() async {
+    if (!widget.requiresAuth) {
+      if (mounted) setState(() => _hasAuth = true);
+      return;
+    }
+    final p = await SharedPreferences.getInstance();
+    final t = p.getString(AuthService.kTokenKey) ?? '';
+    if (!mounted) return;
+    setState(() => _hasAuth = t.isNotEmpty);
+  }
+
+  void _onStatusChange() {
+    if (!mounted) return;
+    if (backupStatus.status == BackupStatus.syncing) {
+      if (!_spin.isAnimating) _spin.repeat();
+    } else {
+      _spin.stop();
+      _spin.value = 0;
+    }
+    setState(() {});
+  }
+
+  @override
+  void dispose() {
+    backupStatus.removeListener(_onStatusChange);
+    _spin.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.requiresAuth && !_hasAuth) return const SizedBox.shrink();
+
+    final s = backupStatus.status;
+    final last = backupStatus.lastBackup;
+    late IconData icon;
+    late Color color;
+    late String tooltip;
+
+    switch (s) {
+      case BackupStatus.disabled:
+        icon = Icons.cloud_off_outlined;
+        color = Colors.grey;
+        tooltip = 'Záloha vypnuta';
+        break;
+      case BackupStatus.empty:
+        icon = Icons.cloud_outlined;
+        color = Colors.grey;
+        tooltip = 'Žádná data k záloze';
+        break;
+      case BackupStatus.pending:
+        icon = Icons.cloud_upload_outlined;
+        color = Colors.orange;
+        tooltip = 'Čeká na zálohu';
+        break;
+      case BackupStatus.syncing:
+        icon = Icons.sync;
+        color = const Color(0xFF00D9FF);
+        tooltip = 'Synchronizuji…';
+        break;
+      case BackupStatus.synced:
+        icon = Icons.cloud_done_outlined;
+        color = const Color(0xFF00FF88);
+        tooltip = last != null
+            ? 'Zálohováno ${last.day}.${last.month}.${last.year} '
+                '${last.hour.toString().padLeft(2, '0')}:${last.minute.toString().padLeft(2, '0')}'
+            : 'Synchronizováno';
+        break;
+      case BackupStatus.error:
+        icon = Icons.cloud_off_outlined;
+        color = Colors.redAccent;
+        tooltip = backupStatus.errorMessage ?? 'Chyba synchronizace';
+        break;
+    }
+
+    return IconButton(
+      icon: RotationTransition(
+        turns: _spin,
+        child: Icon(icon, size: 22, color: color),
+      ),
+      tooltip: tooltip,
+      onPressed: widget.onPressed,
+    );
+  }
+}
+
 void main() {
   if (kIsWeb) {
     sw_update.startVersionPolling((newVersion) {
@@ -473,6 +608,7 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       isLoading = false;
     });
+    _refreshBackupStatus();
 
     if (_showFirstLaunchPicker) {
       _showFirstLaunchPicker = false;
@@ -542,6 +678,7 @@ class _HomeScreenState extends State<HomeScreen> {
       hasUnsavedProgress = true;
       await prefs.setBool(langConfig.hasUnsavedProgressKey, true);
     }
+    backupStatus.update(BackupStatus.pending);
     _scheduleAutoBackup();
   }
 
@@ -558,6 +695,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (token == null || token.isEmpty) return;
     if (_backupInFlight) return;
     _backupInFlight = true;
+    backupStatus.update(BackupStatus.syncing);
     try {
       final Map<String, dynamic> allLangs = {};
       for (final lang in AppLanguage.values) {
@@ -581,6 +719,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (res.statusCode == 401) {
         await prefs.remove(AuthService.kTokenKey);
         await prefs.remove(AuthService.kEmailKey);
+        backupStatus.update(BackupStatus.error, errorMessage: 'Vypršela platnost přihlášení');
         if (mounted) {
           Navigator.of(context).pushAndRemoveUntil(
             MaterialPageRoute(builder: (_) => const AuthGate()),
@@ -596,13 +735,39 @@ class _HomeScreenState extends State<HomeScreen> {
           await prefs.setString(lc.lastBackupDateKey, lastBackupDate!.toIso8601String());
           await prefs.setBool(lc.hasUnsavedProgressKey, false);
         }
+        backupStatus.update(BackupStatus.synced, lastBackup: lastBackupDate);
         if (mounted) setState(() {});
+      } else {
+        backupStatus.update(BackupStatus.error,
+            errorMessage: 'Server vrátil ${res.statusCode}');
       }
-    } catch (_) {
-      // network error - will retry on next save
+    } catch (e) {
+      backupStatus.update(BackupStatus.error, errorMessage: 'Síťová chyba');
     } finally {
       _backupInFlight = false;
     }
+  }
+
+  /// Nastaví status ikony podle aktuálního stavu po načtení dat.
+  void _refreshBackupStatus() {
+    final token = prefs.getString(AuthService.kTokenKey) ?? '';
+    if (!backupEnabled) {
+      backupStatus.update(BackupStatus.disabled, lastBackup: lastBackupDate);
+      return;
+    }
+    if (token.isEmpty) {
+      backupStatus.update(BackupStatus.disabled, lastBackup: lastBackupDate);
+      return;
+    }
+    if (progress.isEmpty && myCards.isEmpty) {
+      backupStatus.update(BackupStatus.empty, lastBackup: lastBackupDate);
+      return;
+    }
+    if (hasUnsavedProgress) {
+      backupStatus.update(BackupStatus.pending, lastBackup: lastBackupDate);
+      return;
+    }
+    backupStatus.update(BackupStatus.synced, lastBackup: lastBackupDate);
   }
 
   String _getCardKey(FlashCard card) {
@@ -617,7 +782,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   double _calculateProgress(List<FlashCard> cards) {
     if (cards.isEmpty) return 0.0;
-    final learned = cards.where((c) => _getCardProgress(c).repetitions > 0).length;
+    // "Naučeno" = modré (interval > 21d), konzistentní s LearningScreen.
+    final learned = cards.where((c) => _getCardProgress(c).interval > 21).length;
     return learned / cards.length;
   }
 
@@ -1279,6 +1445,7 @@ class _HomeScreenState extends State<HomeScreen> {
         elevation: 0,
         centerTitle: true,
         actions: [
+          BackupStatusIcon(onPressed: _shareBackup),
           // Language picker
           IconButton(
             icon: Text(langConfig.flagEmoji, style: const TextStyle(fontSize: 22)),
@@ -1945,7 +2112,7 @@ class _GrammarLevelScreenState extends State<GrammarLevelScreen> {
 
   double _calculateCategoryProgress(GrammarCategory category) {
     if (category.cards.isEmpty) return 0.0;
-    final learned = category.cards.where((c) => widget.getCardProgress(c).repetitions > 0).length;
+    final learned = category.cards.where((c) => widget.getCardProgress(c).interval > 21).length;
     return learned / category.cards.length;
   }
 
@@ -2607,8 +2774,21 @@ class _LearningScreenState extends State<LearningScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final learned = widget.cards.where((c) => _getCardProgress(c).repetitions > 0).length;
+    final today = DateTime.now().toIso8601String().split('T')[0];
+    // "Naučeno" = modré karty (interval > 21d) — souhlasí s barevným kódováním a Boost módem.
+    final learned = widget.cards.where((c) => _getCardProgress(c).interval > 21).length;
     final progressPercent = widget.cards.isNotEmpty ? learned / widget.cards.length : 0.0;
+
+    // "Dnes X" = karty hodnocené dnes (přežije zavření přes lastReview).
+    final reviewedToday = widget.cards
+        .where((c) => _getCardProgress(c).lastReview == today)
+        .length;
+    // Jmenovatel = kolik bylo splatných na začátku dne = hodnocené dnes + stále splatné neotevřené.
+    final stillDueNotTouched = widget.cards.where((c) {
+      final p = _getCardProgress(c);
+      return p.lastReview != today && p.nextReview.compareTo(today) <= 0;
+    }).length;
+    final todayDenominator = reviewedToday + stillDueNotTouched;
 
     // V boost módu po 1. kole počítáme jen ne-Naučené karty (jmenovatel)
     final notLearnedCount = widget.cards.where((c) => _getCardProgress(c).interval <= 21).length;
@@ -2626,6 +2806,7 @@ class _LearningScreenState extends State<LearningScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
+          const BackupStatusIcon(),
           IconButton(
             icon: const Icon(Icons.grid_view),
             onPressed: _showCardsOverview,
@@ -2640,7 +2821,7 @@ class _LearningScreenState extends State<LearningScreen> {
               Text(
                 _boostMode
                     ? '🔥 BOOST · Kolo ${_sessionReviewed.length}/$sessionDenominator · Naučeno $learned/${widget.cards.length}'
-                    : 'Relace ${_sessionReviewed.length}/$sessionDenominator · Naučeno $learned/${widget.cards.length}',
+                    : 'Dnes $reviewedToday/$todayDenominator · Naučeno $learned/${widget.cards.length}',
                 style: TextStyle(color: Colors.grey[500], fontSize: 13),
                 textAlign: TextAlign.center,
               ),
@@ -3149,7 +3330,7 @@ class _NemeckySUsmevemScreenState extends State<NemeckySUsmevemScreen> {
     int learned = 0;
     for (final c in cards) {
       final p = widget.progress[_cardKey(c)];
-      if (p != null && p.repetitions >= 2) learned++;
+      if (p != null && p.interval > 21) learned++;
     }
     return learned / cards.length;
   }
@@ -4018,7 +4199,7 @@ class _PrvoukaHomeScreenState extends State<PrvoukaHomeScreen> {
     int learned = 0;
     for (final c in cards) {
       final p = progress[_cardKey(c)];
-      if (p != null && p.repetitions >= 2) learned++;
+      if (p != null && p.interval > 21) learned++;
     }
     return learned / cards.length;
   }
