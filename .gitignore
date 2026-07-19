@@ -54,3 +54,7 @@ test_page*.png
 # Web build output (deployed to own server)
 docs/
 
+
+# Lokalni pracovni soubory (TODO obsahuje demo credentials, xlsx je mrtvy archiv)
+TODO.md
+English.xlsx
