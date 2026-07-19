@@ -121,21 +121,14 @@ class BackupStatusIcon extends StatefulWidget {
   State<BackupStatusIcon> createState() => _BackupStatusIconState();
 }
 
-class _BackupStatusIconState extends State<BackupStatusIcon>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _spin;
+class _BackupStatusIconState extends State<BackupStatusIcon> {
   bool _hasAuth = true;
 
   @override
   void initState() {
     super.initState();
-    _spin = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 900),
-    );
     backupStatus.addListener(_onStatusChange);
     _checkAuth();
-    _onStatusChange();
   }
 
   Future<void> _checkAuth() async {
@@ -151,19 +144,12 @@ class _BackupStatusIconState extends State<BackupStatusIcon>
 
   void _onStatusChange() {
     if (!mounted) return;
-    if (backupStatus.status == BackupStatus.syncing) {
-      if (!_spin.isAnimating) _spin.repeat();
-    } else {
-      _spin.stop();
-      _spin.value = 0;
-    }
     setState(() {});
   }
 
   @override
   void dispose() {
     backupStatus.removeListener(_onStatusChange);
-    _spin.dispose();
     super.dispose();
   }
 
@@ -213,11 +199,27 @@ class _BackupStatusIconState extends State<BackupStatusIcon>
         break;
     }
 
+    // Při syncing zobraz spinner overlay přes ikonu — využívá CircularProgressIndicator
+    // (na webu spolehlivě animuje, na rozdíl od RotationTransition).
+    final Widget iconWidget = s == BackupStatus.syncing
+        ? SizedBox(
+            width: 22,
+            height: 22,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Icon(icon, size: 16, color: color),
+                CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(color),
+                ),
+              ],
+            ),
+          )
+        : Icon(icon, size: 22, color: color);
+
     return IconButton(
-      icon: RotationTransition(
-        turns: _spin,
-        child: Icon(icon, size: 22, color: color),
-      ),
+      icon: iconWidget,
       tooltip: tooltip,
       onPressed: widget.onPressed,
     );
@@ -287,18 +289,26 @@ class FlashCard {
   final String en;
   final String cz;
   final String category;
+  final String? note; // gramatická nápověda — v UI pod ikonou ⓘ
 
-  FlashCard({required this.en, required this.cz, required this.category});
+  FlashCard({required this.en, required this.cz, required this.category, this.note});
 
   factory FlashCard.fromJson(Map<String, dynamic> json) {
+    final note = json['note'] as String?;
     return FlashCard(
       en: json['en'] ?? '',
       cz: json['cz'] ?? '',
       category: json['category'] ?? '',
+      note: (note != null && note.isNotEmpty) ? note : null,
     );
   }
 
-  Map<String, dynamic> toJson() => {'en': en, 'cz': cz, 'category': category};
+  Map<String, dynamic> toJson() => {
+        'en': en,
+        'cz': cz,
+        'category': category,
+        if (note != null) 'note': note,
+      };
 }
 
 class CardProgress {
@@ -367,18 +377,22 @@ class GrammarLevel {
 class GrammarCategory {
   final String id;
   final String name;
+  final String? info; // vysvětlení gramatiky s příkladem — v UI pod ikonou ⓘ
   final List<FlashCard> cards;
 
   GrammarCategory({
     required this.id,
     required this.name,
+    this.info,
     required this.cards,
   });
 
   factory GrammarCategory.fromJson(Map<String, dynamic> json) {
+    final info = json['info'] as String?;
     return GrammarCategory(
       id: json['id'] ?? '',
       name: json['name'] ?? '',
+      info: (info != null && info.isNotEmpty) ? info : null,
       cards: (json['cards'] as List? ?? [])
           .map((c) => FlashCard.fromJson({...c, 'category': json['name']}))
           .toList(),
@@ -487,6 +501,90 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  /// Globální „David Petrov" karty: server (živé updaty od admina) → lokální
+  /// cache (offline) → bundlovaný asset (první spuštění bez sítě).
+  /// Filtruje na kategorii 'Gramatika věty' (stejně jako původní asset load).
+  Future<List<FlashCard>> _loadDavidCards() async {
+    final cacheKey = 'david_cards_cache_${langConfig.code}';
+    Map<String, dynamic>? jsonData;
+
+    final res = await AuthService.getDavidCards(langConfig.code);
+    if (res.statusCode == 200 && res.body?['cards'] is List) {
+      jsonData = res.body;
+      await prefs.setString(cacheKey, json.encode(res.body));
+    } else {
+      final cached = prefs.getString(cacheKey);
+      if (cached != null) {
+        try {
+          jsonData = json.decode(cached) as Map<String, dynamic>;
+        } catch (_) {}
+      }
+    }
+    if (jsonData == null) {
+      try {
+        jsonData = json.decode(await rootBundle.loadString(langConfig.cardsAsset))
+            as Map<String, dynamic>;
+      } catch (e) {
+        debugPrint('Error loading David cards: $e');
+        return [];
+      }
+    }
+    final List<dynamic> cardsList = jsonData['cards'] ?? [];
+    return cardsList
+        .map((c) => FlashCard.fromJson(c))
+        .where((c) => c.category == 'Gramatika věty')
+        .toList();
+  }
+
+  /// Existují v zařízení lokální data (pokrok nebo vlastní kartičky)?
+  bool _hasAnyLocalData() {
+    for (final lang in AppLanguage.values) {
+      if (lang == AppLanguage.cs) continue;
+      final lc = LanguageConfig(lang);
+      final prog = prefs.getString(lc.progressKey);
+      final cards = prefs.getString(lc.myCardsKey);
+      if ((prog != null && prog.isNotEmpty && prog != '{}') ||
+          (cards != null && cards.isNotEmpty && cards != '[]')) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// Dialog: lokální data vs. serverová záloha. true = stáhnout ze serveru.
+  Future<bool?> _askBackupConflict() {
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF16213E),
+        title: const Text('Nalezena záloha na serveru'),
+        content: const Text(
+          'V tomto zařízení už jsou uložená data (pokrok nebo kartičky) '
+          'a zároveň existuje záloha na serveru.\n\n'
+          'Kterou verzi chceš použít?\n\n'
+          'Pozn.: pokud ponecháš data v zařízení, serverová záloha se při '
+          'příští synchronizaci přepíše těmito daty.',
+          style: TextStyle(height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Ponechat data v zařízení'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF00D9FF),
+              foregroundColor: Colors.black,
+            ),
+            child: const Text('Stáhnout zálohu ze serveru'),
+          ),
+        ],
+      ),
+    );
+  }
+
   static const Set<String> _adminEmails = {'johndave@seznam.cz'};
 
   bool _isAdmin() {
@@ -530,7 +628,15 @@ class _HomeScreenState extends State<HomeScreen> {
     // Pouze JEDNOU - další volání _loadAllData (např. při přepnutí jazyka)
     // zachovají aktuální stav prefs (včetně lokálně obnovených dat).
     if (widget.remoteBackup != null && !_remoteBackupApplied) {
-      await _applyRemoteBackup(widget.remoteBackup!);
+      // Konflikt: v zařízení už jsou lokální data (guest / předchozí session).
+      // Bez dotazu by je serverová záloha tiše přepsala.
+      bool apply = true;
+      if (_hasAnyLocalData() && mounted) {
+        apply = await _askBackupConflict() ?? true;
+      }
+      if (apply) {
+        await _applyRemoteBackup(widget.remoteBackup!);
+      }
       _remoteBackupApplied = true;
     }
 
@@ -569,19 +675,8 @@ class _HomeScreenState extends State<HomeScreen> {
       });
     }
 
-    // Load David's cards (author's cards)
-    try {
-      final String jsonString = await rootBundle.loadString(langConfig.cardsAsset);
-      final Map<String, dynamic> jsonData = json.decode(jsonString);
-      final List<dynamic> cardsList = jsonData['cards'] ?? [];
-      davidCards = cardsList
-          .map((c) => FlashCard.fromJson(c))
-          .where((c) => c.category == 'Gramatika věty')
-          .toList();
-    } catch (e) {
-      davidCards = [];
-      debugPrint('Error loading David cards: $e');
-    }
+    // Load David's cards (author's cards): server → cache → bundlovaný asset
+    davidCards = await _loadDavidCards();
 
     // Load user's own cards
     final String? myCardsJson = prefs.getString(langConfig.myCardsKey);
@@ -1119,7 +1214,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 onTap: () async {
                   await prefs.remove(AuthService.kTokenKey);
                   await prefs.remove(AuthService.kEmailKey);
-                  await prefs.remove('last_logged_in_email');
+                  // Ponecháme 'last_logged_in_email' pro předvyplnění při příštím loginu.
                   await _clearLocalAppState();
                   if (context.mounted) {
                     Navigator.pop(context);
@@ -1128,6 +1223,33 @@ class _HomeScreenState extends State<HomeScreen> {
                       (_) => false,
                     );
                   }
+                },
+              ),
+              const Divider(color: Colors.grey),
+            ] else ...[
+              ListTile(
+                leading: const Icon(Icons.login, color: Color(0xFF00FF88)),
+                title: const Text('Přihlásit se'),
+                subtitle: const Text('Automatická záloha kartiček a pokroku na server'),
+                onTap: () {
+                  // NavigatorState si vezmeme PŘED zavřením sheetu — context sheetu
+                  // je v době onLoggedIn callbacku už odpojený (deactivated).
+                  final nav = Navigator.of(context);
+                  nav.pop();
+                  nav.push(
+                    MaterialPageRoute(
+                      builder: (_) => LoginScreen(
+                        prefs: prefs,
+                        onLoggedIn: () {
+                          // AuthGate stáhne zálohu ze serveru a předá ji HomeScreen.
+                          nav.pushAndRemoveUntil(
+                            MaterialPageRoute(builder: (_) => const AuthGate()),
+                            (_) => false,
+                          );
+                        },
+                      ),
+                    ),
+                  );
                 },
               ),
               const Divider(color: Colors.grey),
@@ -1531,6 +1653,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ).then((_) => setState(() {})),
                   onInfoTap: _showAuthorInfo,
+                  onAddCard: _isAdmin() ? () => _addNewCard(presetDavid: true) : null,
                 ),
               ],
             ],
@@ -1546,10 +1669,14 @@ class _HomeScreenState extends State<HomeScreen> {
     _scheduleAutoBackup();
   }
 
-  Future<void> _addNewCard() async {
+  Future<void> _addNewCard({bool presetDavid = false}) async {
     final enController = TextEditingController();
     final czController = TextEditingController();
     final speech = stt.SpeechToText();
+
+    final isAdminUser = _isAdmin();
+    bool addToDavid = presetDavid && isAdminUser;
+    final noteController = TextEditingController();
 
     final result = await showDialog<bool>(
       context: context,
@@ -1715,6 +1842,32 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     maxLines: 2,
                   ),
+                  if (isAdminUser) ...[
+                    const SizedBox(height: 8),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                      title: const Text('Přidat do „David Petrov kartičky"',
+                          style: TextStyle(fontSize: 14)),
+                      subtitle: const Text('Globálně — uvidí všichni uživatelé',
+                          style: TextStyle(fontSize: 11, color: Color(0xFFFFD700))),
+                      activeThumbColor: const Color(0xFFFFD700),
+                      value: addToDavid,
+                      onChanged: (v) => setDialogState(() => addToDavid = v),
+                    ),
+                    if (addToDavid) ...[
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: noteController,
+                        decoration: const InputDecoration(
+                          labelText: 'Nápověda ⓘ (volitelná)',
+                          hintText: 'Gramatická vysvětlivka ke kartě',
+                          border: OutlineInputBorder(),
+                        ),
+                        maxLines: 2,
+                      ),
+                    ],
+                  ],
                 ],
               ),
               actions: [
@@ -1740,14 +1893,70 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     if (result == true && enController.text.isNotEmpty && czController.text.isNotEmpty) {
-      setState(() {
-        myCards.add(FlashCard(
-          en: enController.text,
-          cz: czController.text,
-          category: myCardsName,
-        ));
+      if (isAdminUser && addToDavid) {
+        await _addDavidCard(
+          enController.text.trim(),
+          czController.text.trim(),
+          noteController.text.trim(),
+        );
+      } else {
+        setState(() {
+          myCards.add(FlashCard(
+            en: enController.text,
+            cz: czController.text,
+            category: myCardsName,
+          ));
+        });
+        await _saveMyCards();
+      }
+    }
+  }
+
+  /// Admin: přidá kartu do globálních „David Petrov kartičky" přes API.
+  Future<void> _addDavidCard(String en, String cz, String note) async {
+    final token = prefs.getString(AuthService.kTokenKey);
+    final messenger = ScaffoldMessenger.of(context);
+    if (token == null || token.isEmpty) {
+      messenger.showSnackBar(const SnackBar(
+          content: Text('Pro přidání globální karty se musíš přihlásit.')));
+      return;
+    }
+    try {
+      final res = await AuthService.addDavidCard(token, {
+        'lang': langConfig.code,
+        'en': en,
+        'cz': cz,
+        'category': 'Gramatika věty',
+        if (note.isNotEmpty) 'note': note,
       });
-      await _saveMyCards();
+      if (res.statusCode == 200) {
+        setState(() {
+          davidCards.add(FlashCard(
+            en: en,
+            cz: cz,
+            category: 'Gramatika věty',
+            note: note.isNotEmpty ? note : null,
+          ));
+        });
+        // Aktualizace cache, ať nová karta přežije restart i offline
+        await prefs.setString(
+          'david_cards_cache_${langConfig.code}',
+          json.encode({'cards': davidCards.map((c) => c.toJson()).toList()}),
+        );
+        messenger.showSnackBar(const SnackBar(
+            content: Text('Přidáno do David Petrov kartiček (globálně)')));
+      } else if (res.statusCode == 409) {
+        messenger.showSnackBar(const SnackBar(
+            content: Text('Karta se stejným textem už v David Petrov existuje.')));
+      } else if (res.statusCode == 403) {
+        messenger.showSnackBar(const SnackBar(
+            content: Text('Server tě neuznal jako admina (403).')));
+      } else {
+        messenger.showSnackBar(SnackBar(
+            content: Text('Chyba při přidávání (${res.statusCode}).')));
+      }
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('Chyba spojení: $e')));
     }
   }
 
@@ -1922,6 +2131,7 @@ class _HomeScreenState extends State<HomeScreen> {
     required Color color,
     required VoidCallback onTap,
     required VoidCallback onInfoTap,
+    VoidCallback? onAddCard, // jen pro admina — přidání globální karty
   }) {
     return GestureDetector(
       onTap: onTap,
@@ -1945,6 +2155,16 @@ class _HomeScreenState extends State<HomeScreen> {
                     style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                 ),
+                if (onAddCard != null) ...[
+                  IconButton(
+                    icon: const Icon(Icons.add_circle, color: Color(0xFFFFD700), size: 22),
+                    tooltip: 'Přidat globální kartičku (admin)',
+                    onPressed: onAddCard,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                  const SizedBox(width: 8),
+                ],
                 IconButton(
                   icon: Icon(Icons.info_outline, color: color, size: 20),
                   onPressed: onInfoTap,
@@ -2150,6 +2370,36 @@ class _GrammarLevelScreenState extends State<GrammarLevelScreen> {
     }
   }
 
+  void _showCategoryInfo(GrammarCategory category) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF16213E),
+        title: Row(
+          children: [
+            const Icon(Icons.info_outline, color: Color(0xFF00D9FF)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(category.name, style: const TextStyle(fontSize: 17)),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Text(
+            category.info!,
+            style: const TextStyle(fontSize: 15, height: 1.45),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -2215,6 +2465,14 @@ class _GrammarLevelScreenState extends State<GrammarLevelScreen> {
                       ),
                     ),
                     const SizedBox(width: 12),
+                    if (category.info != null)
+                      IconButton(
+                        icon: const Icon(Icons.info_outline,
+                            color: Color(0xFF00D9FF), size: 22),
+                        tooltip: 'Vysvětlení gramatiky',
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () => _showCategoryInfo(category),
+                      ),
                     Text(
                       '${(categoryProgress * 100).toInt()}%',
                       style: TextStyle(
@@ -3011,36 +3269,75 @@ class _LearningScreenState extends State<LearningScreen> {
           ),
         ],
       ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+      child: Stack(
         children: [
-          Text(
-            questionText,
-            style: const TextStyle(fontSize: 22, height: 1.5),
-            textAlign: TextAlign.center,
-          ),
-          if (showTranslation) ...[
-            const SizedBox(height: 20),
-            Container(
-              width: double.infinity,
-              height: 1,
-              color: Colors.grey[700],
-            ),
-            const SizedBox(height: 20),
-            Text(
-              answerText,
-              style: const TextStyle(
-                fontSize: 20,
-                color: Color(0xFF00D9FF),
-                height: 1.5,
+          Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                questionText,
+                style: const TextStyle(fontSize: 22, height: 1.5),
+                textAlign: TextAlign.center,
               ),
-              textAlign: TextAlign.center,
+              if (showTranslation) ...[
+                const SizedBox(height: 20),
+                Container(
+                  width: double.infinity,
+                  height: 1,
+                  color: Colors.grey[700],
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  answerText,
+                  style: const TextStyle(
+                    fontSize: 20,
+                    color: Color(0xFF00D9FF),
+                    height: 1.5,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+              const Spacer(),
+              Text(
+                currentCard!.category,
+                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+              ),
+            ],
+          ),
+          if (currentCard!.note != null)
+            Positioned(
+              top: -18,
+              right: -18,
+              child: IconButton(
+                icon: const Icon(Icons.info_outline, color: Color(0xFF00D9FF)),
+                tooltip: 'Nápověda',
+                onPressed: _showNote,
+              ),
             ),
+        ],
+      ),
+    );
+  }
+
+  void _showNote() {
+    final note = currentCard?.note;
+    if (note == null) return;
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF16213E),
+        title: const Row(
+          children: [
+            Icon(Icons.info_outline, color: Color(0xFF00D9FF)),
+            SizedBox(width: 8),
+            Text('Nápověda', style: TextStyle(fontSize: 18)),
           ],
-          const Spacer(),
-          Text(
-            currentCard!.category,
-            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+        ),
+        content: Text(note, style: const TextStyle(fontSize: 16, height: 1.4)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
           ),
         ],
       ),
@@ -3116,6 +3413,20 @@ class CardsOverviewScreen extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(card.cz, style: const TextStyle(color: Color(0xFF00D9FF))),
+            if (card.note != null) ...[
+              const SizedBox(height: 12),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.info_outline, size: 16, color: Color(0xFF00D9FF)),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(card.note!,
+                        style: TextStyle(color: Colors.grey[300], fontSize: 13, height: 1.3)),
+                  ),
+                ],
+              ),
+            ],
             const SizedBox(height: 16),
             Text('Opakování: ${prog.repetitions}x', style: TextStyle(color: Colors.grey[400], fontSize: 12)),
             Text('Interval: ${prog.interval} dní', style: TextStyle(color: Colors.grey[400], fontSize: 12)),
@@ -3513,6 +3824,28 @@ class AuthService {
 
   static Future<ApiResult> getAdminUsers(String token) =>
       _request('GET', 'admin_users.php', token: token);
+
+  /// Globální „David Petrov" karty ze serveru. Nikdy nevyhazuje — při
+  /// chybě sítě vrací ApiResult(0, null), volající spadne na cache/asset.
+  static Future<ApiResult> getDavidCards(String lang) async {
+    try {
+      final uri = _api('david_cards.php').replace(queryParameters: {'lang': lang});
+      final res = await http
+          .get(uri, headers: {'Accept': 'application/json'})
+          .timeout(const Duration(seconds: 6));
+      Map<String, dynamic>? data;
+      try {
+        data = json.decode(res.body) as Map<String, dynamic>;
+      } catch (_) {}
+      return ApiResult(res.statusCode, data);
+    } catch (_) {
+      return ApiResult(0, null);
+    }
+  }
+
+  /// Admin: přidání globální karty (server ověřuje ADMIN_EMAILS).
+  static Future<ApiResult> addDavidCard(String token, Map<String, dynamic> card) =>
+      _request('POST', 'david_cards.php', body: card, token: token);
 }
 
 // ===== Login Screen =====
@@ -3536,6 +3869,16 @@ class _LoginScreenState extends State<LoginScreen> {
   bool registered = false;
   String registeredEmail = '';
 
+  @override
+  void initState() {
+    super.initState();
+    // Předvyplnit email z minulého přihlášení (uložené při loginu)
+    final lastEmail = widget.prefs.getString('last_logged_in_email') ?? '';
+    if (lastEmail.isNotEmpty) {
+      emailController.text = lastEmail;
+    }
+  }
+
   Future<void> _login() async {
     final email = emailController.text.trim().toLowerCase();
     final password = passwordController.text;
@@ -3555,6 +3898,9 @@ class _LoginScreenState extends State<LoginScreen> {
         final returnedEmail = (res.body!['email'] as String?) ?? email;
         await widget.prefs.setString(AuthService.kTokenKey, token);
         await widget.prefs.setString(AuthService.kEmailKey, returnedEmail);
+        // Signalizuj prohlížeči/OS password manageru, že přihlášení uspělo,
+        // aby nabídl uložit heslo.
+        TextInput.finishAutofillContext();
         widget.onLoggedIn();
       } else if (res.statusCode == 401) {
         setState(() => error = 'Nesprávný e-mail nebo heslo.');
@@ -3610,6 +3956,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     if (registered) {
       return Scaffold(
+        appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0),
         body: SafeArea(
           child: Center(
             child: ConstrainedBox(
@@ -3651,6 +3998,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     return Scaffold(
+      appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0),
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
@@ -3667,24 +4015,32 @@ class _LoginScreenState extends State<LoginScreen> {
                   const Text('Aplikace pro učení cizích jazyků',
                       style: TextStyle(fontSize: 14, color: Colors.grey)),
                   const SizedBox(height: 40),
-                  TextField(
-                    controller: emailController,
-                    keyboardType: TextInputType.emailAddress,
-                    decoration: const InputDecoration(labelText: 'Email'),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: passwordController,
-                    obscureText: obscurePassword,
-                    decoration: InputDecoration(
-                      labelText: 'Heslo',
-                      suffixIcon: IconButton(
-                        icon: Icon(obscurePassword ? Icons.visibility : Icons.visibility_off),
-                        tooltip: obscurePassword ? 'Zobrazit heslo' : 'Skrýt heslo',
-                        onPressed: () => setState(() => obscurePassword = !obscurePassword),
-                      ),
+                  AutofillGroup(
+                    child: Column(
+                      children: [
+                        TextField(
+                          controller: emailController,
+                          keyboardType: TextInputType.emailAddress,
+                          autofillHints: const [AutofillHints.username, AutofillHints.email],
+                          decoration: const InputDecoration(labelText: 'Email'),
+                        ),
+                        const SizedBox(height: 16),
+                        TextField(
+                          controller: passwordController,
+                          obscureText: obscurePassword,
+                          autofillHints: const [AutofillHints.password],
+                          decoration: InputDecoration(
+                            labelText: 'Heslo',
+                            suffixIcon: IconButton(
+                              icon: Icon(obscurePassword ? Icons.visibility : Icons.visibility_off),
+                              tooltip: obscurePassword ? 'Zobrazit heslo' : 'Skrýt heslo',
+                              onPressed: () => setState(() => obscurePassword = !obscurePassword),
+                            ),
+                          ),
+                          onSubmitted: (_) => _login(),
+                        ),
+                      ],
                     ),
-                    onSubmitted: (_) => _login(),
                   ),
                   if (error != null) ...[
                     const SizedBox(height: 16),
@@ -3808,20 +4164,14 @@ class _AuthGateState extends State<AuthGate> {
     }
   }
 
-  void _handleLoggedIn() {
-    setState(() {
-      isLoading = true;
-    });
-    _check();
-  }
-
   @override
   Widget build(BuildContext context) {
     if (isLoading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
     if (!isLoggedIn) {
-      return LoginScreen(prefs: prefs!, onLoggedIn: _handleLoggedIn);
+      // Guest mode: aplikace funguje bez účtu, login je dostupný z nastavení.
+      return const HomeScreen();
     }
     return HomeScreen(remoteBackup: remoteBackup);
   }

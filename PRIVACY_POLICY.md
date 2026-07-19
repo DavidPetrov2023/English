@@ -1,48 +1,61 @@
-# Zásady ochrany soukromí - English Learning
+# LangCards — Zásady ochrany soukromí
 
-**Poslední aktualizace:** 14. ledna 2026
+**Poslední aktualizace:** 19. července 2026
+**Provozovatel:** David Petrov · **Kontakt:** davidpetrov@email.cz
+**Kanonická verze (URL pro Play Console):** https://petrovelektronika.cz/LangCards/privacy.html
 
-## Úvod
+> Tento soubor je kopie pro repozitář. Při změně aktualizovat OBĚ verze — tento soubor
+> i privacy.html na serveru (scp do /var/www/html/LangCards/).
 
-Aplikace English Learning (dále jen "aplikace") je vzdělávací aplikace pro učení anglického jazyka. Vaše soukromí je pro nás důležité a tato stránka vysvětluje, jak nakládáme s vašimi daty.
+## Používání bez účtu
 
-## Shromažďování dat
+Aplikaci lze plně používat **bez registrace**. Všechna data (pokrok v učení, vlastní
+kartičky, nastavení) pak zůstávají **pouze lokálně v zařízení** a nikam se neodesílají.
 
-Aplikace **neshromažďuje žádné osobní údaje**. Veškerá data zůstávají uložena pouze lokálně ve vašem zařízení.
+## Volitelný účet a záloha
 
-### Data uložená lokálně v zařízení:
-- Pokrok v učení (které kartičky jste prošli)
-- Vlastní kartičky vytvořené uživatelem
-- Nastavení aplikace
+Při vytvoření účtu zpracováváme:
 
-Tato data **nejsou odesílána** na žádné servery a zůstávají výhradně ve vašem zařízení.
+- **e-mailovou adresu** — přihlášení a ověření účtu
+- **heslo** — pouze bcrypt otisk, nikdy heslo samotné
+- **zálohu dat** — pokrok a vlastní kartičky se automaticky zálohují na server
+  provozovatele (petrovelektronika.cz)
+- **provozní údaje účtu** — datum registrace, poslední přihlášení, velikost zálohy
 
-## Sdílení dat
+Data neprodáváme, nepoužíváme k reklamě ani nepředáváme třetím stranám s výjimkou
+případů níže.
 
-Aplikace **nesdílí žádná data** s třetími stranami.
+## Překlad textu (třetí strana)
 
-## Záloha dat
+Tlačítko automatického překladu odešle **zadaný text službě MyMemory** (translated.net).
+Bez použití tlačítka se žádný text nikam neodesílá.
 
-Aplikace umožňuje ruční export zálohy do souboru. Tento soubor je vytvořen lokálně a uživatel sám rozhoduje, kam ho uloží nebo odešle. Autor aplikace k těmto zálohám nemá přístup.
+## Mikrofon a diktování
+
+Diktování vyžaduje oprávnění k **mikrofonu** (vyžádáno při prvním použití). Rozpoznávání
+řeči provádí služba zařízení (na Androidu služba Google). Aplikace zvuk neukládá.
+
+## Výslovnost (TTS)
+
+Výslovnost přehrává syntetizér zařízení. Ve webové verzi může být text odeslán na server
+provozovatele (vrací zvuk); eviduje se měsíční objem znaků na účet.
+
+## Smazání účtu a dat
+
+E-mailem na davidpetrov@email.cz z registrované adresy; smazání do 30 dnů. Stejně lze
+požádat i o smazání samotné zálohy bez zrušení účtu. Lokální data odstraní odhlášení
+nebo odinstalace.
+
+## Co aplikace NEDĚLÁ
+
+- žádné reklamy
+- žádná analytika ani tracking
+- žádný sběr polohy, kontaktů, SMS
+- žádné AI zpracování dat
 
 ## Děti
 
-Aplikace je vhodná pro všechny věkové kategorie. Neshromažďuje žádné osobní údaje od dětí ani dospělých.
-
-## Oprávnění aplikace
-
-Aplikace nepožaduje žádná speciální oprávnění kromě:
-- Přístup k úložišti (pouze pro export/import zálohy)
-
-## Změny zásad
-
-Tyto zásady mohou být aktualizovány. O změnách budete informováni prostřednictvím aktualizace aplikace.
-
-## Kontakt
-
-Pokud máte dotazy ohledně těchto zásad ochrany soukromí, kontaktujte nás na:
-
-**Email:** davidpetrov@email.cz
+Vhodné pro všechny věkové kategorie. Bez účtu aplikace žádné osobní údaje nezpracovává.
 
 ---
 

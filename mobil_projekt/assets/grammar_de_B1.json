@@ -1,137 +1,442 @@
 {
-  "level": "B1",
-  "name": "Samostatny",
-  "color": "#FF9800",
-  "categories": [
+ "level": "B1",
+ "name": "Samostatny",
+ "color": "#FF9800",
+ "categories": [
+  {
+   "id": "praeteritum",
+   "name": "Minuly cas (Praeteritum)",
+   "cards": [
     {
-      "id": "praeteritum",
-      "name": "Minuly cas (Praeteritum)",
-      "cards": [
-        {"en": "ich war", "cz": "ja jsem byl/a"},
-        {"en": "du warst", "cz": "ty jsi byl/a"},
-        {"en": "er/sie/es war", "cz": "on/ona/ono byl/a/o"},
-        {"en": "wir waren", "cz": "my jsme byli"},
-        {"en": "ich hatte", "cz": "ja jsem mel/a"},
-        {"en": "er hatte", "cz": "on mel"},
-        {"en": "ich ging nach Hause.", "cz": "Sel/sla jsem domu."},
-        {"en": "Er kam gestern.", "cz": "On prisel vcera."},
-        {"en": "Sie sprach mit ihm.", "cz": "Ona s nim mluvila."},
-        {"en": "Wir fuhren nach Berlin.", "cz": "Jeli jsme do Berlina."},
-        {"en": "Er las die Zeitung.", "cz": "On cetl noviny."},
-        {"en": "Ich schrieb einen Brief.", "cz": "Napsal/a jsem dopis."},
-        {"en": "Sie gab mir das Geld.", "cz": "Ona mi dala penize."},
-        {"en": "Wir assen in einem Restaurant.", "cz": "Jedli jsme v restauraci."},
-        {"en": "Er fand seine Schluessel.", "cz": "On nasel sve klice."},
-        {"en": "Ich wusste es nicht.", "cz": "Nevedel/a jsem to."},
-        {"en": "Es gab viele Leute.", "cz": "Bylo tam hodne lidi."},
-        {"en": "Sie konnte nicht kommen.", "cz": "Nemohla prijit."},
-        {"en": "Er musste arbeiten.", "cz": "Musel pracovat."},
-        {"en": "Ich durfte das nicht.", "cz": "To jsem nesmel/a."}
-      ]
+     "en": "ich war",
+     "cz": "ja jsem byl/a"
     },
     {
-      "id": "passive_voice",
-      "name": "Trpny rod (Passiv)",
-      "cards": [
-        {"en": "Das Buch wird gelesen.", "cz": "Kniha je ctena. (Vorgangspassiv)"},
-        {"en": "Das Haus wurde gebaut.", "cz": "Dum byl postaven."},
-        {"en": "Der Brief ist geschrieben worden.", "cz": "Dopis byl napsan."},
-        {"en": "Hier wird Deutsch gesprochen.", "cz": "Tady se mluvi nemecky."},
-        {"en": "Das Auto wird repariert.", "cz": "Auto se opravuje."},
-        {"en": "Die Tuer wurde geoeffnet.", "cz": "Dvere byly otevreny."},
-        {"en": "Das Essen wird gerade gekocht.", "cz": "Jidlo se prave vari."},
-        {"en": "Der Film wurde von ihm gedreht.", "cz": "Film byl jim natocen."},
-        {"en": "Die Rechnung muss bezahlt werden.", "cz": "Ucet musi byt zaplacen."},
-        {"en": "Das Problem kann geloest werden.", "cz": "Problem muze byt vyresen."},
-        {"en": "Es wird viel gearbeitet.", "cz": "Hodne se pracuje."},
-        {"en": "Die Stadt wurde zerstoert.", "cz": "Mesto bylo zniceno."},
-        {"en": "Der Kuchen ist gebacken worden.", "cz": "Dort byl upecen."},
-        {"en": "Die E-Mail wird morgen geschickt.", "cz": "E-mail bude odeslan zitra."},
-        {"en": "Das Fenster ist geoeffnet.", "cz": "Okno je otevrene. (Zustandspassiv)"},
-        {"en": "Das Geschaeft ist geschlossen.", "cz": "Obchod je zavreny."},
-        {"en": "Mir wurde gesagt, dass...", "cz": "Bylo mi receno, ze..."},
-        {"en": "Ihm wurde geholfen.", "cz": "Bylo mu pomozeno."},
-        {"en": "Es wird getanzt.", "cz": "Tanci se."},
-        {"en": "Die Arbeit muss gemacht werden.", "cz": "Prace musi byt udelana."}
-      ]
+     "en": "du warst",
+     "cz": "ty jsi byl/a"
     },
     {
-      "id": "relative_clauses",
-      "name": "Vztazne vety (Relativsaetze)",
-      "cards": [
-        {"en": "Der Mann, der dort steht.", "cz": "Muz, ktery tam stoji."},
-        {"en": "Die Frau, die ich kenne.", "cz": "Zena, kterou znam."},
-        {"en": "Das Kind, das spielt.", "cz": "Dite, ktere si hraje."},
-        {"en": "Die Leute, die hier wohnen.", "cz": "Lide, kteri tady bydli."},
-        {"en": "Der Film, den ich gesehen habe.", "cz": "Film, ktery jsem videl."},
-        {"en": "Die Stadt, in der ich lebe.", "cz": "Mesto, ve kterem ziji."},
-        {"en": "Das Buch, das auf dem Tisch liegt.", "cz": "Kniha, ktera lezi na stole."},
-        {"en": "Der Freund, dem ich geholfen habe.", "cz": "Kamarad, kteremu jsem pomohl."},
-        {"en": "Die Frau, deren Mann Arzt ist.", "cz": "Zena, jeji muz je lekar."},
-        {"en": "Das Haus, in dem wir wohnen.", "cz": "Dum, ve kterem bydlime."},
-        {"en": "Der Tag, an dem wir uns trafen.", "cz": "Den, kdy jsme se potkali."},
-        {"en": "Die Firma, fuer die er arbeitet.", "cz": "Firma, pro kterou pracuje."},
-        {"en": "Das Land, aus dem sie kommt.", "cz": "Zeme, ze ktere pochazi."},
-        {"en": "Alles, was ich weiss.", "cz": "Vse, co vim."},
-        {"en": "Das Beste, was passieren kann.", "cz": "To nejlepsi, co se muze stat."},
-        {"en": "Der Grund, warum ich hier bin.", "cz": "Duvod, proc jsem tady."},
-        {"en": "Der Ort, wo ich geboren bin.", "cz": "Misto, kde jsem se narodil."},
-        {"en": "Die Lehrerin, die mich unterrichtet.", "cz": "Ucitelka, ktera me uci."},
-        {"en": "Der Kollege, mit dem ich arbeite.", "cz": "Kolega, se kterym pracuji."},
-        {"en": "Das Restaurant, das wir besucht haben.", "cz": "Restaurace, kterou jsme navstivili."}
-      ]
+     "en": "er/sie/es war",
+     "cz": "on/ona/ono byl/a/o"
     },
     {
-      "id": "konjunktiv_2",
-      "name": "Konjunktiv II (podminovaci zpusob)",
-      "cards": [
-        {"en": "Ich wuerde gern reisen.", "cz": "Rad/a bych cestoval/a."},
-        {"en": "Koenntest du mir helfen?", "cz": "Mohl/a bys mi pomoci?"},
-        {"en": "Ich haette gern einen Kaffee.", "cz": "Dal/a bych si kavu."},
-        {"en": "Wenn ich reich waere, wuerde ich reisen.", "cz": "Kdybych byl bohaty, cestoval bych."},
-        {"en": "Wenn ich Zeit haette, wuerde ich kommen.", "cz": "Kdybych mel cas, prisel bych."},
-        {"en": "Er wuerde das nie tun.", "cz": "On by to nikdy neudelal."},
-        {"en": "Wir wuerden gern bleiben.", "cz": "Radi bychom zustali."},
-        {"en": "An deiner Stelle wuerde ich gehen.", "cz": "Na tvem miste bych sel."},
-        {"en": "Wenn es nicht regnete, gingen wir spazieren.", "cz": "Kdyby neprselo, sli bychom na prochazku."},
-        {"en": "Ich wuenschte, ich koennte fliegen.", "cz": "Pral/a bych si, abych mohl/a letat."},
-        {"en": "Haettest du Lust mitzukommen?", "cz": "Mel/a bys chut jit s nami?"},
-        {"en": "Das waere schoen.", "cz": "To by bylo hezke."},
-        {"en": "Ich wuerde sagen, dass...", "cz": "Rekl/a bych, ze..."},
-        {"en": "Koennten Sie mir bitte helfen?", "cz": "Mohl byste mi prosim pomoci?"},
-        {"en": "Wenn ich du waere, wuerde ich aufpassen.", "cz": "Kdybych byl tebou, daval bych pozor."},
-        {"en": "Es waere besser, wenn...", "cz": "Bylo by lepsi, kdyby..."},
-        {"en": "Ich wuerde lieber zu Hause bleiben.", "cz": "Radeji bych zustal/a doma."},
-        {"en": "Was wuerdest du tun?", "cz": "Co bys delal/a?"},
-        {"en": "Wenn ich koennte, wuerde ich helfen.", "cz": "Kdybych mohl, pomohl bych."},
-        {"en": "Man sollte mehr Sport treiben.", "cz": "Clovek by mel vice sportovat."}
-      ]
+     "en": "wir waren",
+     "cz": "my jsme byli"
     },
     {
-      "id": "infinitive_zu",
-      "name": "Infinitiv s zu",
-      "cards": [
-        {"en": "Ich versuche, Deutsch zu lernen.", "cz": "Snazim se ucit nemecky."},
-        {"en": "Es ist wichtig, puenktlich zu sein.", "cz": "Je dulezite byt dochvilny."},
-        {"en": "Ich habe keine Lust, aufzuraeumen.", "cz": "Nemam chut uklizet."},
-        {"en": "Er hat vergessen, anzurufen.", "cz": "Zapomnel zavolat."},
-        {"en": "Ich hoffe, dich bald zu sehen.", "cz": "Doufam, ze te brzy uvidim."},
-        {"en": "Es ist schwer, das zu verstehen.", "cz": "Je tezke tomu porozumet."},
-        {"en": "Ich habe vor, nach Wien zu fahren.", "cz": "Mam v planu jet do Vidne."},
-        {"en": "Sie hat angefangen zu arbeiten.", "cz": "Ona zacala pracovat."},
-        {"en": "Er hat aufgehoert zu rauchen.", "cz": "On prestal kourit."},
-        {"en": "Ich bitte dich, mir zu helfen.", "cz": "Prosim te, abys mi pomohl."},
-        {"en": "Es macht Spass, zu tanzen.", "cz": "Tancovani je zabava."},
-        {"en": "Ich empfehle Ihnen, frueh zu kommen.", "cz": "Doporucuji vam prijit brzy."},
-        {"en": "Ohne zu fragen, ging er weg.", "cz": "Aniz by se zeptal, odesel."},
-        {"en": "Statt zu lernen, spielt er.", "cz": "Misto uceni si hraje."},
-        {"en": "Um besser zu verstehen, lese ich viel.", "cz": "Abych lepe rozumel, hodne ctu."},
-        {"en": "Ich habe keine Zeit, das zu machen.", "cz": "Nemam cas to udelat."},
-        {"en": "Es ist moeglich, das zu aendern.", "cz": "Je mozne to zmenit."},
-        {"en": "Ich bin froh, hier zu sein.", "cz": "Jsem rad, ze jsem tady."},
-        {"en": "Er scheint krank zu sein.", "cz": "Zda se, ze je nemocny."},
-        {"en": "Es ist noetig, das zu besprechen.", "cz": "Je nutne to probrat."}
-      ]
+     "en": "ich hatte",
+     "cz": "ja jsem mel/a"
+    },
+    {
+     "en": "er hatte",
+     "cz": "on mel"
+    },
+    {
+     "en": "ich ging nach Hause.",
+     "cz": "Sel/sla jsem domu."
+    },
+    {
+     "en": "Er kam gestern.",
+     "cz": "On prisel vcera."
+    },
+    {
+     "en": "Sie sprach mit ihm.",
+     "cz": "Ona s nim mluvila."
+    },
+    {
+     "en": "Wir fuhren nach Berlin.",
+     "cz": "Jeli jsme do Berlina."
+    },
+    {
+     "en": "Er las die Zeitung.",
+     "cz": "On cetl noviny."
+    },
+    {
+     "en": "Ich schrieb einen Brief.",
+     "cz": "Napsal/a jsem dopis."
+    },
+    {
+     "en": "Sie gab mir das Geld.",
+     "cz": "Ona mi dala penize."
+    },
+    {
+     "en": "Wir assen in einem Restaurant.",
+     "cz": "Jedli jsme v restauraci."
+    },
+    {
+     "en": "Er fand seine Schluessel.",
+     "cz": "On nasel sve klice."
+    },
+    {
+     "en": "Ich wusste es nicht.",
+     "cz": "Nevedel/a jsem to."
+    },
+    {
+     "en": "Es gab viele Leute.",
+     "cz": "Bylo tam hodne lidi."
+    },
+    {
+     "en": "Sie konnte nicht kommen.",
+     "cz": "Nemohla prijit."
+    },
+    {
+     "en": "Er musste arbeiten.",
+     "cz": "Musel pracovat."
+    },
+    {
+     "en": "Ich durfte das nicht.",
+     "cz": "To jsem nesmel/a."
     }
-  ]
+   ],
+   "info": "Psaná/vyprávěcí minulost. U war (byl), hatte (měl) a modálních sloves se běžně používá i v řeči místo perfekta.\nPravidelná: -te (machte), nepravidelná mění kmen (gehen → ging, kommen → kam).\n\nPříklady:\nEs war schön. — Bylo to hezké.\nIch hatte keine Zeit. — Neměl jsem čas."
+  },
+  {
+   "id": "passive_voice",
+   "name": "Trpny rod (Passiv)",
+   "cards": [
+    {
+     "en": "Das Buch wird gelesen.",
+     "cz": "Kniha je ctena. (Vorgangspassiv)"
+    },
+    {
+     "en": "Das Haus wurde gebaut.",
+     "cz": "Dum byl postaven."
+    },
+    {
+     "en": "Der Brief ist geschrieben worden.",
+     "cz": "Dopis byl napsan."
+    },
+    {
+     "en": "Hier wird Deutsch gesprochen.",
+     "cz": "Tady se mluvi nemecky."
+    },
+    {
+     "en": "Das Auto wird repariert.",
+     "cz": "Auto se opravuje."
+    },
+    {
+     "en": "Die Tuer wurde geoeffnet.",
+     "cz": "Dvere byly otevreny."
+    },
+    {
+     "en": "Das Essen wird gerade gekocht.",
+     "cz": "Jidlo se prave vari."
+    },
+    {
+     "en": "Der Film wurde von ihm gedreht.",
+     "cz": "Film byl jim natocen."
+    },
+    {
+     "en": "Die Rechnung muss bezahlt werden.",
+     "cz": "Ucet musi byt zaplacen."
+    },
+    {
+     "en": "Das Problem kann geloest werden.",
+     "cz": "Problem muze byt vyresen."
+    },
+    {
+     "en": "Es wird viel gearbeitet.",
+     "cz": "Hodne se pracuje."
+    },
+    {
+     "en": "Die Stadt wurde zerstoert.",
+     "cz": "Mesto bylo zniceno."
+    },
+    {
+     "en": "Der Kuchen ist gebacken worden.",
+     "cz": "Dort byl upecen."
+    },
+    {
+     "en": "Die E-Mail wird morgen geschickt.",
+     "cz": "E-mail bude odeslan zitra."
+    },
+    {
+     "en": "Das Fenster ist geoeffnet.",
+     "cz": "Okno je otevrene. (Zustandspassiv)"
+    },
+    {
+     "en": "Das Geschaeft ist geschlossen.",
+     "cz": "Obchod je zavreny."
+    },
+    {
+     "en": "Mir wurde gesagt, dass...",
+     "cz": "Bylo mi receno, ze..."
+    },
+    {
+     "en": "Ihm wurde geholfen.",
+     "cz": "Bylo mu pomozeno."
+    },
+    {
+     "en": "Es wird getanzt.",
+     "cz": "Tanci se."
+    },
+    {
+     "en": "Die Arbeit muss gemacht werden.",
+     "cz": "Prace musi byt udelana."
+    }
+   ],
+   "info": "Trpný rod: werden + Partizip II. Minulost: wurde + Partizip II.\n\nPříklady:\nDas Haus wird gebaut. — Dům se staví.\nDie Brücke wurde 1990 gebaut. — Most byl postaven v roce 1990."
+  },
+  {
+   "id": "relative_clauses",
+   "name": "Vztazne vety (Relativsaetze)",
+   "cards": [
+    {
+     "en": "Der Mann, der dort steht.",
+     "cz": "Muz, ktery tam stoji."
+    },
+    {
+     "en": "Die Frau, die ich kenne.",
+     "cz": "Zena, kterou znam."
+    },
+    {
+     "en": "Das Kind, das spielt.",
+     "cz": "Dite, ktere si hraje."
+    },
+    {
+     "en": "Die Leute, die hier wohnen.",
+     "cz": "Lide, kteri tady bydli."
+    },
+    {
+     "en": "Der Film, den ich gesehen habe.",
+     "cz": "Film, ktery jsem videl."
+    },
+    {
+     "en": "Die Stadt, in der ich lebe.",
+     "cz": "Mesto, ve kterem ziji."
+    },
+    {
+     "en": "Das Buch, das auf dem Tisch liegt.",
+     "cz": "Kniha, ktera lezi na stole."
+    },
+    {
+     "en": "Der Freund, dem ich geholfen habe.",
+     "cz": "Kamarad, kteremu jsem pomohl."
+    },
+    {
+     "en": "Die Frau, deren Mann Arzt ist.",
+     "cz": "Zena, jeji muz je lekar."
+    },
+    {
+     "en": "Das Haus, in dem wir wohnen.",
+     "cz": "Dum, ve kterem bydlime."
+    },
+    {
+     "en": "Der Tag, an dem wir uns trafen.",
+     "cz": "Den, kdy jsme se potkali."
+    },
+    {
+     "en": "Die Firma, fuer die er arbeitet.",
+     "cz": "Firma, pro kterou pracuje."
+    },
+    {
+     "en": "Das Land, aus dem sie kommt.",
+     "cz": "Zeme, ze ktere pochazi."
+    },
+    {
+     "en": "Alles, was ich weiss.",
+     "cz": "Vse, co vim."
+    },
+    {
+     "en": "Das Beste, was passieren kann.",
+     "cz": "To nejlepsi, co se muze stat."
+    },
+    {
+     "en": "Der Grund, warum ich hier bin.",
+     "cz": "Duvod, proc jsem tady."
+    },
+    {
+     "en": "Der Ort, wo ich geboren bin.",
+     "cz": "Misto, kde jsem se narodil."
+    },
+    {
+     "en": "Die Lehrerin, die mich unterrichtet.",
+     "cz": "Ucitelka, ktera me uci."
+    },
+    {
+     "en": "Der Kollege, mit dem ich arbeite.",
+     "cz": "Kolega, se kterym pracuji."
+    },
+    {
+     "en": "Das Restaurant, das wir besucht haben.",
+     "cz": "Restaurace, kterou jsme navstivili."
+    }
+   ],
+   "info": "Vztažná zájmena der/die/das podle rodu a pádu řídícího slova; sloveso jde na KONEC vedlejší věty.\n\nPříklady:\nDer Mann, der dort steht, ist mein Vater. — Muž, který tam stojí, je můj otec.\nDas Buch, das ich lese, ist spannend. — Kniha, kterou čtu, je napínavá."
+  },
+  {
+   "id": "konjunktiv_2",
+   "name": "Konjunktiv II (podminovaci zpusob)",
+   "cards": [
+    {
+     "en": "Ich wuerde gern reisen.",
+     "cz": "Rad/a bych cestoval/a."
+    },
+    {
+     "en": "Koenntest du mir helfen?",
+     "cz": "Mohl/a bys mi pomoci?"
+    },
+    {
+     "en": "Ich haette gern einen Kaffee.",
+     "cz": "Dal/a bych si kavu."
+    },
+    {
+     "en": "Wenn ich reich waere, wuerde ich reisen.",
+     "cz": "Kdybych byl bohaty, cestoval bych."
+    },
+    {
+     "en": "Wenn ich Zeit haette, wuerde ich kommen.",
+     "cz": "Kdybych mel cas, prisel bych."
+    },
+    {
+     "en": "Er wuerde das nie tun.",
+     "cz": "On by to nikdy neudelal."
+    },
+    {
+     "en": "Wir wuerden gern bleiben.",
+     "cz": "Radi bychom zustali."
+    },
+    {
+     "en": "An deiner Stelle wuerde ich gehen.",
+     "cz": "Na tvem miste bych sel."
+    },
+    {
+     "en": "Wenn es nicht regnete, gingen wir spazieren.",
+     "cz": "Kdyby neprselo, sli bychom na prochazku."
+    },
+    {
+     "en": "Ich wuenschte, ich koennte fliegen.",
+     "cz": "Pral/a bych si, abych mohl/a letat."
+    },
+    {
+     "en": "Haettest du Lust mitzukommen?",
+     "cz": "Mel/a bys chut jit s nami?"
+    },
+    {
+     "en": "Das waere schoen.",
+     "cz": "To by bylo hezke."
+    },
+    {
+     "en": "Ich wuerde sagen, dass...",
+     "cz": "Rekl/a bych, ze..."
+    },
+    {
+     "en": "Koennten Sie mir bitte helfen?",
+     "cz": "Mohl byste mi prosim pomoci?"
+    },
+    {
+     "en": "Wenn ich du waere, wuerde ich aufpassen.",
+     "cz": "Kdybych byl tebou, daval bych pozor."
+    },
+    {
+     "en": "Es waere besser, wenn...",
+     "cz": "Bylo by lepsi, kdyby..."
+    },
+    {
+     "en": "Ich wuerde lieber zu Hause bleiben.",
+     "cz": "Radeji bych zustal/a doma."
+    },
+    {
+     "en": "Was wuerdest du tun?",
+     "cz": "Co bys delal/a?"
+    },
+    {
+     "en": "Wenn ich koennte, wuerde ich helfen.",
+     "cz": "Kdybych mohl, pomohl bych."
+    },
+    {
+     "en": "Man sollte mehr Sport treiben.",
+     "cz": "Clovek by mel vice sportovat."
+    }
+   ],
+   "info": "Podmiňovací způsob: würde + infinitiv; u častých sloves vlastní tvary: wäre (byl by), hätte (měl by), könnte (mohl by).\nPro zdvořilé prosby a nereálné situace.\n\nPříklady:\nIch würde gern kommen. — Rád bych přišel.\nWenn ich Zeit hätte, würde ich dir helfen. — Kdybych měl čas, pomohl bych ti."
+  },
+  {
+   "id": "infinitive_zu",
+   "name": "Infinitiv s zu",
+   "cards": [
+    {
+     "en": "Ich versuche, Deutsch zu lernen.",
+     "cz": "Snazim se ucit nemecky."
+    },
+    {
+     "en": "Es ist wichtig, puenktlich zu sein.",
+     "cz": "Je dulezite byt dochvilny."
+    },
+    {
+     "en": "Ich habe keine Lust, aufzuraeumen.",
+     "cz": "Nemam chut uklizet."
+    },
+    {
+     "en": "Er hat vergessen, anzurufen.",
+     "cz": "Zapomnel zavolat."
+    },
+    {
+     "en": "Ich hoffe, dich bald zu sehen.",
+     "cz": "Doufam, ze te brzy uvidim."
+    },
+    {
+     "en": "Es ist schwer, das zu verstehen.",
+     "cz": "Je tezke tomu porozumet."
+    },
+    {
+     "en": "Ich habe vor, nach Wien zu fahren.",
+     "cz": "Mam v planu jet do Vidne."
+    },
+    {
+     "en": "Sie hat angefangen zu arbeiten.",
+     "cz": "Ona zacala pracovat."
+    },
+    {
+     "en": "Er hat aufgehoert zu rauchen.",
+     "cz": "On prestal kourit."
+    },
+    {
+     "en": "Ich bitte dich, mir zu helfen.",
+     "cz": "Prosim te, abys mi pomohl."
+    },
+    {
+     "en": "Es macht Spass, zu tanzen.",
+     "cz": "Tancovani je zabava."
+    },
+    {
+     "en": "Ich empfehle Ihnen, frueh zu kommen.",
+     "cz": "Doporucuji vam prijit brzy."
+    },
+    {
+     "en": "Ohne zu fragen, ging er weg.",
+     "cz": "Aniz by se zeptal, odesel."
+    },
+    {
+     "en": "Statt zu lernen, spielt er.",
+     "cz": "Misto uceni si hraje."
+    },
+    {
+     "en": "Um besser zu verstehen, lese ich viel.",
+     "cz": "Abych lepe rozumel, hodne ctu."
+    },
+    {
+     "en": "Ich habe keine Zeit, das zu machen.",
+     "cz": "Nemam cas to udelat."
+    },
+    {
+     "en": "Es ist moeglich, das zu aendern.",
+     "cz": "Je mozne to zmenit."
+    },
+    {
+     "en": "Ich bin froh, hier zu sein.",
+     "cz": "Jsem rad, ze jsem tady."
+    },
+    {
+     "en": "Er scheint krank zu sein.",
+     "cz": "Zda se, ze je nemocny."
+    },
+    {
+     "en": "Es ist noetig, das zu besprechen.",
+     "cz": "Je nutne to probrat."
+    }
+   ],
+   "info": "Infinitiv s zu po mnoha slovesech a vazbách: Ich habe vergessen, ihn anzurufen (u odlučitelných předpon jde zu DOPROSTŘED: an-zu-rufen).\num … zu = abych/aby (účel).\n\nPříklady:\nIch versuche, mehr Sport zu machen. — Snažím se víc sportovat.\nIch lerne Deutsch, um in Wien zu arbeiten. — Učím se německy, abych pracoval ve Vídni."
+  }
+ ]
 }

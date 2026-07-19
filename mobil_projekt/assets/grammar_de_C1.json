@@ -1,163 +1,529 @@
 {
-  "level": "C1",
-  "name": "Expert",
-  "color": "#9C27B0",
-  "categories": [
+ "level": "C1",
+ "name": "Expert",
+ "color": "#9C27B0",
+ "categories": [
+  {
+   "id": "konjunktiv_1",
+   "name": "Konjunktiv I (neprima rec)",
+   "cards": [
     {
-      "id": "konjunktiv_1",
-      "name": "Konjunktiv I (neprima rec)",
-      "cards": [
-        {"en": "Er sagte, er sei muede.", "cz": "Rekl, ze je unaveny. (neprima rec)"},
-        {"en": "Sie meinte, sie habe keine Zeit.", "cz": "Myslela, ze nema cas."},
-        {"en": "Er behauptete, er wisse nichts davon.", "cz": "Tvrdil, ze o tom nic nevi."},
-        {"en": "Die Zeitung berichtet, es gebe Probleme.", "cz": "Noviny uvadeji, ze existuji problemy."},
-        {"en": "Der Minister erklaerte, man muesse handeln.", "cz": "Ministr prohlasil, ze je treba jednat."},
-        {"en": "Sie sagte, sie komme morgen.", "cz": "Rekla, ze prijde zitra."},
-        {"en": "Er berichtete, er habe alles gesehen.", "cz": "Informoval, ze vse videl."},
-        {"en": "Man sagt, er sei sehr intelligent.", "cz": "Rika se, ze je velmi inteligentni."},
-        {"en": "Es heisst, das Wetter werde besser.", "cz": "Rika se, ze pocasi se zlepsi."},
-        {"en": "Der Arzt sagte, ich solle mehr schlafen.", "cz": "Lekar rekl, ze mam vice spat."},
-        {"en": "Sie betonte, das sei sehr wichtig.", "cz": "Zduraznila, ze to je velmi dulezite."},
-        {"en": "Er versicherte, er werde kommen.", "cz": "Ujistil, ze prijde."},
-        {"en": "Die Polizei teilte mit, der Taeter sei gefasst.", "cz": "Policie oznamila, ze pachatel byl chycen."},
-        {"en": "Man nehme zwei Eier und Mehl.", "cz": "Vezmete dva vejce a mouku. (recept)"},
-        {"en": "Gott sei Dank!", "cz": "Diky Bohu!"},
-        {"en": "Es lebe die Freiheit!", "cz": "At zije svoboda!"},
-        {"en": "Wie dem auch sei...", "cz": "At je to jakkoliv..."},
-        {"en": "Sie fragte, ob er kommen koenne.", "cz": "Zeptala se, zda by mohl prijit."},
-        {"en": "Er antwortete, er habe schon gegessen.", "cz": "Odpovedel, ze uz jedl."},
-        {"en": "Die Studie zeigt, Bewegung sei gesund.", "cz": "Studie ukazuje, ze pohyb je zdravy."}
-      ]
+     "en": "Er sagte, er sei muede.",
+     "cz": "Rekl, ze je unaveny. (neprima rec)"
     },
     {
-      "id": "advanced_grammar",
-      "name": "Pokrocila gramatika",
-      "cards": [
-        {"en": "Je mehr ich uebe, desto besser werde ich.", "cz": "Cim vice cvicim, tim lepsi jsem."},
-        {"en": "Kaum hatte er angefangen, da klingelte das Telefon.", "cz": "Sotva zacal, uz zvonil telefon."},
-        {"en": "Nicht nur er, sondern auch sie war dagegen.", "cz": "Nejen on, ale i ona byla proti."},
-        {"en": "Weder konnte er lesen noch schreiben.", "cz": "Neumel ani cist, ani psat."},
-        {"en": "So sehr er sich auch bemuehte, es gelang ihm nicht.", "cz": "Jakkoli se snazil, nepodarilo se mu to."},
-        {"en": "Wie auch immer die Entscheidung ausfaellt...", "cz": "At rozhodnuti dopadne jakkoliv..."},
-        {"en": "Angenommen, er kommt nicht, was dann?", "cz": "Za predpokladu, ze neprijde, co pak?"},
-        {"en": "Vorausgesetzt, dass alles klappt...", "cz": "Za predpokladu, ze vse vyjde..."},
-        {"en": "Es sei denn, er aendert seine Meinung.", "cz": "Ledaze by zmenil svuj nazor."},
-        {"en": "Geschweige denn, dass er sich entschuldigt.", "cz": "Natoz aby se omluvil."},
-        {"en": "Umso mehr muesste er sich anstrengen.", "cz": "O to vice by se mel snazit."},
-        {"en": "Nichtsdestotrotz bleibt die Frage offen.", "cz": "Nicmene otazka zustava otevrena."},
-        {"en": "Was mich betrifft, bin ich einverstanden.", "cz": "Co se me tyce, souhlasim."},
-        {"en": "Im Grunde genommen hat er Recht.", "cz": "V podstate ma pravdu."},
-        {"en": "Abgesehen davon, dass es teuer ist...", "cz": "Odhlédneme-li od toho, ze je to drahe..."},
-        {"en": "Es laesst sich nicht leugnen, dass...", "cz": "Neda se poprit, ze..."},
-        {"en": "Aus meiner Sicht waere das moeglich.", "cz": "Z meho pohledu by to bylo mozne."},
-        {"en": "Unter der Bedingung, dass alle zustimmen.", "cz": "Pod podminkou, ze vsichni souhlasite."},
-        {"en": "Inwieweit das zutrifft, bleibt unklar.", "cz": "Nakolik je to pravda, zustava nejasne."},
-        {"en": "Es versteht sich von selbst, dass...", "cz": "Rozumi se samo sebou, ze..."}
-      ]
+     "en": "Sie meinte, sie habe keine Zeit.",
+     "cz": "Myslela, ze nema cas."
     },
     {
-      "id": "idioms_german",
-      "name": "Nemecke idiomy",
-      "cards": [
-        {"en": "Da steppt der Baer!", "cz": "Tam to zije! (Je tam zabava)"},
-        {"en": "Ich verstehe nur Bahnhof.", "cz": "Vubec tomu nerozumim."},
-        {"en": "Das ist nicht mein Bier.", "cz": "To neni moje vec."},
-        {"en": "Tomaten auf den Augen haben.", "cz": "Byt slepy, nevidet ocividne veci."},
-        {"en": "Die Daumen druecken.", "cz": "Drzet palce."},
-        {"en": "Schwein haben.", "cz": "Mit stesti."},
-        {"en": "Da liegt der Hund begraben.", "cz": "V tom je ten problem. (Tam je zakopany pes.)"},
-        {"en": "Alles hat ein Ende, nur die Wurst hat zwei.", "cz": "Vse ma konec, jen klobasa ma dva."},
-        {"en": "den Nagel auf den Kopf treffen", "cz": "trefit hrebicek na hlavicku"},
-        {"en": "jemandem auf den Keks gehen", "cz": "lezt nekomu na nervy"},
-        {"en": "Aller Anfang ist schwer.", "cz": "Kazdy zacatek je tezky."},
-        {"en": "Das ist mir Wurst.", "cz": "To je mi jedno."},
-        {"en": "eine Extrawurst bekommen", "cz": "dostat zvlastni zachazeni"},
-        {"en": "den inneren Schweinehund ueberwinden", "cz": "prekonat vlastni lenost"},
-        {"en": "auf dem Holzweg sein", "cz": "byt na spatne ceste"},
-        {"en": "jemandem reinen Wein einschenken", "cz": "rict nekomu pravdu"},
-        {"en": "kein Blatt vor den Mund nehmen", "cz": "nebrat si servitky"},
-        {"en": "aus einer Muecke einen Elefanten machen", "cz": "delat z komara velblouda"},
-        {"en": "den Faden verlieren", "cz": "ztratit nit (myslenek)"},
-        {"en": "Ich druecke dir die Daumen!", "cz": "Drzim ti palce!"}
-      ]
+     "en": "Er behauptete, er wisse nichts davon.",
+     "cz": "Tvrdil, ze o tom nic nevi."
     },
     {
-      "id": "formal_german",
-      "name": "Formalni nemcina",
-      "cards": [
-        {"en": "Sehr geehrte Damen und Herren,", "cz": "Vazene damy a panove, (formalni dopis)"},
-        {"en": "Ich schreibe Ihnen bezueglich...", "cz": "Pisi Vam ohledne..."},
-        {"en": "Anbei finden Sie...", "cz": "V priloze naleznete..."},
-        {"en": "Ich waere Ihnen dankbar, wenn...", "cz": "Byl bych Vam vdecny, kdyby..."},
-        {"en": "Ich freue mich auf Ihre Antwort.", "cz": "Tesim se na Vasi odpoved."},
-        {"en": "Bitte zoegern Sie nicht, mich zu kontaktieren.", "cz": "Prosim, nevahejte me kontaktovat."},
-        {"en": "Ich entschuldige mich fuer die Unannehmlichkeiten.", "cz": "Omlouvam se za neprijemnosti."},
-        {"en": "Mit freundlichen Gruessen", "cz": "S pratelskym pozdravem (zaver dopisu)"},
-        {"en": "Hiermit moechte ich Sie darauf aufmerksam machen...", "cz": "Timto bych Vas rad upozornil..."},
-        {"en": "Des Weiteren moechte ich erwaehnen...", "cz": "Dale bych chtel zminit..."},
-        {"en": "Zusammenfassend laesst sich sagen...", "cz": "Shrneme-li to..."},
-        {"en": "Daraus ergibt sich, dass...", "cz": "Z toho vyplyva, ze..."},
-        {"en": "Im Hinblick auf...", "cz": "S ohledem na..."},
-        {"en": "Unter Beruecksichtigung aller Faktoren...", "cz": "S prihlédnutim ke vsem faktorum..."},
-        {"en": "Demzufolge...", "cz": "V dusledku toho..."},
-        {"en": "Nichtsdestoweniger...", "cz": "Nicmene..."},
-        {"en": "Im Gegensatz dazu...", "cz": "Naproti tomu..."},
-        {"en": "Darueber hinaus...", "cz": "Krome toho..."},
-        {"en": "Abschliessend moechte ich betonen...", "cz": "Zaverem bych chtel zduraznit..."},
-        {"en": "In Anbetracht der Tatsache, dass...", "cz": "Vzhledem ke skutecnosti, ze..."}
-      ]
+     "en": "Die Zeitung berichtet, es gebe Probleme.",
+     "cz": "Noviny uvadeji, ze existuji problemy."
     },
     {
-      "id": "nuances_german",
-      "name": "Nuance a synonyma",
-      "cards": [
-        {"en": "kennen vs. wissen", "cz": "znat (osobu/vec) vs. vedet (fakt)"},
-        {"en": "wenn vs. als vs. wann", "cz": "kdyz (opak.) vs. kdyz (jednou) vs. kdy (otazka)"},
-        {"en": "seit vs. seitdem vs. vor", "cz": "od (dosud trva) vs. od te doby co vs. pred"},
-        {"en": "noch vs. schon vs. erst", "cz": "jeste vs. uz vs. teprve"},
-        {"en": "sondern vs. aber", "cz": "nybrz (po zaporu) vs. ale"},
-        {"en": "stehen vs. stellen vs. liegen vs. legen", "cz": "stat vs. postavit vs. lezet vs. polozit"},
-        {"en": "schaffen vs. erschaffen", "cz": "zvladnout vs. stvorit"},
-        {"en": "fahren vs. gehen vs. reisen", "cz": "jet vs. jit vs. cestovat"},
-        {"en": "machen vs. tun", "cz": "delat (konkretni) vs. delat/cinit (obecne)"},
-        {"en": "sollen vs. muessen", "cz": "mit povinnost (druhy) vs. muset (vnitni/vnejsi)"},
-        {"en": "duerfen vs. koennen", "cz": "smet (povoleni) vs. moci (schopnost)"},
-        {"en": "anscheinend vs. scheinbar", "cz": "ocividne (asi tak je) vs. zdanlive (neni tak)"},
-        {"en": "als ob vs. als wenn", "cz": "jako by (oba stejny vyznam)"},
-        {"en": "naemlich vs. also vs. deshalb", "cz": "totiz vs. tedy vs. proto"},
-        {"en": "trotzdem vs. obwohl vs. dennoch", "cz": "presto vs. prestoze vs. nicmene"},
-        {"en": "zwar ... aber", "cz": "sice ... ale"},
-        {"en": "einerseits ... andererseits", "cz": "na jedne strane ... na druhe strane"},
-        {"en": "weder ... noch", "cz": "ani ... ani"},
-        {"en": "sowohl ... als auch", "cz": "jak ... tak i"},
-        {"en": "entweder ... oder", "cz": "bud ... nebo"}
-      ]
+     "en": "Der Minister erklaerte, man muesse handeln.",
+     "cz": "Ministr prohlasil, ze je treba jednat."
     },
     {
-      "id": "collocations_german",
-      "name": "Kolokace a ustálena spojeni",
-      "cards": [
-        {"en": "eine Entscheidung treffen", "cz": "ucinit rozhodnuti"},
-        {"en": "eine Rolle spielen", "cz": "hrat roli"},
-        {"en": "in Frage kommen", "cz": "pripadat v uvahu"},
-        {"en": "Bescheid wissen", "cz": "vedet / byt informovan"},
-        {"en": "zur Verfuegung stehen", "cz": "byt k dispozici"},
-        {"en": "in Betracht ziehen", "cz": "vzit v uvahu"},
-        {"en": "Ruecksicht nehmen auf", "cz": "brat ohled na"},
-        {"en": "einen Beitrag leisten", "cz": "prispet"},
-        {"en": "Einfluss ausueben auf", "cz": "mit vliv na"},
-        {"en": "zum Ausdruck bringen", "cz": "vyjadrit"},
-        {"en": "in Anspruch nehmen", "cz": "vyuzit (sluzbu)"},
-        {"en": "Wert legen auf", "cz": "klast duraz na"},
-        {"en": "zu dem Schluss kommen", "cz": "dojit k zaveru"},
-        {"en": "den Ueberblick verlieren", "cz": "ztratit prehled"},
-        {"en": "eine Loesung finden", "cz": "najit reseni"},
-        {"en": "sich Muehe geben", "cz": "davat si namahu"},
-        {"en": "auf dem Laufenden bleiben", "cz": "byt v obraze"},
-        {"en": "einen Kompromiss schliessen", "cz": "uzavrit kompromis"},
-        {"en": "Fortschritte machen", "cz": "delat pokroky"},
-        {"en": "im Grunde genommen", "cz": "v podstate"}
-      ]
+     "en": "Sie sagte, sie komme morgen.",
+     "cz": "Rekla, ze prijde zitra."
+    },
+    {
+     "en": "Er berichtete, er habe alles gesehen.",
+     "cz": "Informoval, ze vse videl."
+    },
+    {
+     "en": "Man sagt, er sei sehr intelligent.",
+     "cz": "Rika se, ze je velmi inteligentni."
+    },
+    {
+     "en": "Es heisst, das Wetter werde besser.",
+     "cz": "Rika se, ze pocasi se zlepsi."
+    },
+    {
+     "en": "Der Arzt sagte, ich solle mehr schlafen.",
+     "cz": "Lekar rekl, ze mam vice spat."
+    },
+    {
+     "en": "Sie betonte, das sei sehr wichtig.",
+     "cz": "Zduraznila, ze to je velmi dulezite."
+    },
+    {
+     "en": "Er versicherte, er werde kommen.",
+     "cz": "Ujistil, ze prijde."
+    },
+    {
+     "en": "Die Polizei teilte mit, der Taeter sei gefasst.",
+     "cz": "Policie oznamila, ze pachatel byl chycen."
+    },
+    {
+     "en": "Man nehme zwei Eier und Mehl.",
+     "cz": "Vezmete dva vejce a mouku. (recept)"
+    },
+    {
+     "en": "Gott sei Dank!",
+     "cz": "Diky Bohu!"
+    },
+    {
+     "en": "Es lebe die Freiheit!",
+     "cz": "At zije svoboda!"
+    },
+    {
+     "en": "Wie dem auch sei...",
+     "cz": "At je to jakkoliv..."
+    },
+    {
+     "en": "Sie fragte, ob er kommen koenne.",
+     "cz": "Zeptala se, zda by mohl prijit."
+    },
+    {
+     "en": "Er antwortete, er habe schon gegessen.",
+     "cz": "Odpovedel, ze uz jedl."
+    },
+    {
+     "en": "Die Studie zeigt, Bewegung sei gesund.",
+     "cz": "Studie ukazuje, ze pohyb je zdravy."
     }
-  ]
+   ],
+   "info": "Konjunktiv I pro nepřímou řeč — mluvčí se distancuje od obsahu (typické pro zpravodajství): er sei (prý je), er habe (prý má).\nKde se tvar kryje s oznamovacím, nastupuje Konjunktiv II.\n\nPříklady:\nEr sagt, er sei krank. — Říká, že je (prý) nemocný.\nSie behauptete, sie habe keine Zeit. — Tvrdila, že nemá čas."
+  },
+  {
+   "id": "advanced_grammar",
+   "name": "Pokrocila gramatika",
+   "cards": [
+    {
+     "en": "Je mehr ich uebe, desto besser werde ich.",
+     "cz": "Cim vice cvicim, tim lepsi jsem."
+    },
+    {
+     "en": "Kaum hatte er angefangen, da klingelte das Telefon.",
+     "cz": "Sotva zacal, uz zvonil telefon."
+    },
+    {
+     "en": "Nicht nur er, sondern auch sie war dagegen.",
+     "cz": "Nejen on, ale i ona byla proti."
+    },
+    {
+     "en": "Weder konnte er lesen noch schreiben.",
+     "cz": "Neumel ani cist, ani psat."
+    },
+    {
+     "en": "So sehr er sich auch bemuehte, es gelang ihm nicht.",
+     "cz": "Jakkoli se snazil, nepodarilo se mu to."
+    },
+    {
+     "en": "Wie auch immer die Entscheidung ausfaellt...",
+     "cz": "At rozhodnuti dopadne jakkoliv..."
+    },
+    {
+     "en": "Angenommen, er kommt nicht, was dann?",
+     "cz": "Za predpokladu, ze neprijde, co pak?"
+    },
+    {
+     "en": "Vorausgesetzt, dass alles klappt...",
+     "cz": "Za predpokladu, ze vse vyjde..."
+    },
+    {
+     "en": "Es sei denn, er aendert seine Meinung.",
+     "cz": "Ledaze by zmenil svuj nazor."
+    },
+    {
+     "en": "Geschweige denn, dass er sich entschuldigt.",
+     "cz": "Natoz aby se omluvil."
+    },
+    {
+     "en": "Umso mehr muesste er sich anstrengen.",
+     "cz": "O to vice by se mel snazit."
+    },
+    {
+     "en": "Nichtsdestotrotz bleibt die Frage offen.",
+     "cz": "Nicmene otazka zustava otevrena."
+    },
+    {
+     "en": "Was mich betrifft, bin ich einverstanden.",
+     "cz": "Co se me tyce, souhlasim."
+    },
+    {
+     "en": "Im Grunde genommen hat er Recht.",
+     "cz": "V podstate ma pravdu."
+    },
+    {
+     "en": "Abgesehen davon, dass es teuer ist...",
+     "cz": "Odhlédneme-li od toho, ze je to drahe..."
+    },
+    {
+     "en": "Es laesst sich nicht leugnen, dass...",
+     "cz": "Neda se poprit, ze..."
+    },
+    {
+     "en": "Aus meiner Sicht waere das moeglich.",
+     "cz": "Z meho pohledu by to bylo mozne."
+    },
+    {
+     "en": "Unter der Bedingung, dass alle zustimmen.",
+     "cz": "Pod podminkou, ze vsichni souhlasite."
+    },
+    {
+     "en": "Inwieweit das zutrifft, bleibt unklar.",
+     "cz": "Nakolik je to pravda, zustava nejasne."
+    },
+    {
+     "en": "Es versteht sich von selbst, dass...",
+     "cz": "Rozumi se samo sebou, ze..."
+    }
+   ],
+   "info": "Rysy psané odborné němčiny: nominalizace (das Lesen), funkční slovesné vazby (zur Verfügung stehen, in Frage kommen), rozvité přívlastky.\n\nPříklady:\nzur Verfügung stehen — být k dispozici\neine Entscheidung treffen — učinit rozhodnutí\nBeim Lesen des Vertrags… — Při čtení smlouvy…"
+  },
+  {
+   "id": "idioms_german",
+   "name": "Nemecke idiomy",
+   "cards": [
+    {
+     "en": "Da steppt der Baer!",
+     "cz": "Tam to zije! (Je tam zabava)"
+    },
+    {
+     "en": "Ich verstehe nur Bahnhof.",
+     "cz": "Vubec tomu nerozumim."
+    },
+    {
+     "en": "Das ist nicht mein Bier.",
+     "cz": "To neni moje vec."
+    },
+    {
+     "en": "Tomaten auf den Augen haben.",
+     "cz": "Byt slepy, nevidet ocividne veci."
+    },
+    {
+     "en": "Die Daumen druecken.",
+     "cz": "Drzet palce."
+    },
+    {
+     "en": "Schwein haben.",
+     "cz": "Mit stesti."
+    },
+    {
+     "en": "Da liegt der Hund begraben.",
+     "cz": "V tom je ten problem. (Tam je zakopany pes.)"
+    },
+    {
+     "en": "Alles hat ein Ende, nur die Wurst hat zwei.",
+     "cz": "Vse ma konec, jen klobasa ma dva."
+    },
+    {
+     "en": "den Nagel auf den Kopf treffen",
+     "cz": "trefit hrebicek na hlavicku"
+    },
+    {
+     "en": "jemandem auf den Keks gehen",
+     "cz": "lezt nekomu na nervy"
+    },
+    {
+     "en": "Aller Anfang ist schwer.",
+     "cz": "Kazdy zacatek je tezky."
+    },
+    {
+     "en": "Das ist mir Wurst.",
+     "cz": "To je mi jedno."
+    },
+    {
+     "en": "eine Extrawurst bekommen",
+     "cz": "dostat zvlastni zachazeni"
+    },
+    {
+     "en": "den inneren Schweinehund ueberwinden",
+     "cz": "prekonat vlastni lenost"
+    },
+    {
+     "en": "auf dem Holzweg sein",
+     "cz": "byt na spatne ceste"
+    },
+    {
+     "en": "jemandem reinen Wein einschenken",
+     "cz": "rict nekomu pravdu"
+    },
+    {
+     "en": "kein Blatt vor den Mund nehmen",
+     "cz": "nebrat si servitky"
+    },
+    {
+     "en": "aus einer Muecke einen Elefanten machen",
+     "cz": "delat z komara velblouda"
+    },
+    {
+     "en": "den Faden verlieren",
+     "cz": "ztratit nit (myslenek)"
+    },
+    {
+     "en": "Ich druecke dir die Daumen!",
+     "cz": "Drzim ti palce!"
+    }
+   ],
+   "info": "Německé idiomy — nelze překládat doslova, učte se je v kontextu.\n\nPříklady:\ndie Daumen drücken — držet palce\nins Fettnäpfchen treten — šlápnout vedle\nTomaten auf den Augen haben — mít klapky na očích\nunter vier Augen — mezi čtyřma očima"
+  },
+  {
+   "id": "formal_german",
+   "name": "Formalni nemcina",
+   "cards": [
+    {
+     "en": "Sehr geehrte Damen und Herren,",
+     "cz": "Vazene damy a panove, (formalni dopis)"
+    },
+    {
+     "en": "Ich schreibe Ihnen bezueglich...",
+     "cz": "Pisi Vam ohledne..."
+    },
+    {
+     "en": "Anbei finden Sie...",
+     "cz": "V priloze naleznete..."
+    },
+    {
+     "en": "Ich waere Ihnen dankbar, wenn...",
+     "cz": "Byl bych Vam vdecny, kdyby..."
+    },
+    {
+     "en": "Ich freue mich auf Ihre Antwort.",
+     "cz": "Tesim se na Vasi odpoved."
+    },
+    {
+     "en": "Bitte zoegern Sie nicht, mich zu kontaktieren.",
+     "cz": "Prosim, nevahejte me kontaktovat."
+    },
+    {
+     "en": "Ich entschuldige mich fuer die Unannehmlichkeiten.",
+     "cz": "Omlouvam se za neprijemnosti."
+    },
+    {
+     "en": "Mit freundlichen Gruessen",
+     "cz": "S pratelskym pozdravem (zaver dopisu)"
+    },
+    {
+     "en": "Hiermit moechte ich Sie darauf aufmerksam machen...",
+     "cz": "Timto bych Vas rad upozornil..."
+    },
+    {
+     "en": "Des Weiteren moechte ich erwaehnen...",
+     "cz": "Dale bych chtel zminit..."
+    },
+    {
+     "en": "Zusammenfassend laesst sich sagen...",
+     "cz": "Shrneme-li to..."
+    },
+    {
+     "en": "Daraus ergibt sich, dass...",
+     "cz": "Z toho vyplyva, ze..."
+    },
+    {
+     "en": "Im Hinblick auf...",
+     "cz": "S ohledem na..."
+    },
+    {
+     "en": "Unter Beruecksichtigung aller Faktoren...",
+     "cz": "S prihlédnutim ke vsem faktorum..."
+    },
+    {
+     "en": "Demzufolge...",
+     "cz": "V dusledku toho..."
+    },
+    {
+     "en": "Nichtsdestoweniger...",
+     "cz": "Nicmene..."
+    },
+    {
+     "en": "Im Gegensatz dazu...",
+     "cz": "Naproti tomu..."
+    },
+    {
+     "en": "Darueber hinaus...",
+     "cz": "Krome toho..."
+    },
+    {
+     "en": "Abschliessend moechte ich betonen...",
+     "cz": "Zaverem bych chtel zduraznit..."
+    },
+    {
+     "en": "In Anbetracht der Tatsache, dass...",
+     "cz": "Vzhledem ke skutecnosti, ze..."
+    }
+   ],
+   "info": "Formální němčina: oslovení Sehr geehrte Damen und Herren, závěr Mit freundlichen Grüßen; zdvořilostní konjunktiv (Ich hätte eine Frage); žádné hovorové zkratky.\n\nPříklady:\nIch würde mich freuen, von Ihnen zu hören. — Rád bych se od Vás dozvěděl / těším se na odpověď.\nKönnten Sie mir bitte mitteilen… — Mohl(a) byste mi prosím sdělit…"
+  },
+  {
+   "id": "nuances_german",
+   "name": "Nuance a synonyma",
+   "cards": [
+    {
+     "en": "kennen vs. wissen",
+     "cz": "znat (osobu/vec) vs. vedet (fakt)"
+    },
+    {
+     "en": "wenn vs. als vs. wann",
+     "cz": "kdyz (opak.) vs. kdyz (jednou) vs. kdy (otazka)"
+    },
+    {
+     "en": "seit vs. seitdem vs. vor",
+     "cz": "od (dosud trva) vs. od te doby co vs. pred"
+    },
+    {
+     "en": "noch vs. schon vs. erst",
+     "cz": "jeste vs. uz vs. teprve"
+    },
+    {
+     "en": "sondern vs. aber",
+     "cz": "nybrz (po zaporu) vs. ale"
+    },
+    {
+     "en": "stehen vs. stellen vs. liegen vs. legen",
+     "cz": "stat vs. postavit vs. lezet vs. polozit"
+    },
+    {
+     "en": "schaffen vs. erschaffen",
+     "cz": "zvladnout vs. stvorit"
+    },
+    {
+     "en": "fahren vs. gehen vs. reisen",
+     "cz": "jet vs. jit vs. cestovat"
+    },
+    {
+     "en": "machen vs. tun",
+     "cz": "delat (konkretni) vs. delat/cinit (obecne)"
+    },
+    {
+     "en": "sollen vs. muessen",
+     "cz": "mit povinnost (druhy) vs. muset (vnitni/vnejsi)"
+    },
+    {
+     "en": "duerfen vs. koennen",
+     "cz": "smet (povoleni) vs. moci (schopnost)"
+    },
+    {
+     "en": "anscheinend vs. scheinbar",
+     "cz": "ocividne (asi tak je) vs. zdanlive (neni tak)"
+    },
+    {
+     "en": "als ob vs. als wenn",
+     "cz": "jako by (oba stejny vyznam)"
+    },
+    {
+     "en": "naemlich vs. also vs. deshalb",
+     "cz": "totiz vs. tedy vs. proto"
+    },
+    {
+     "en": "trotzdem vs. obwohl vs. dennoch",
+     "cz": "presto vs. prestoze vs. nicmene"
+    },
+    {
+     "en": "zwar ... aber",
+     "cz": "sice ... ale"
+    },
+    {
+     "en": "einerseits ... andererseits",
+     "cz": "na jedne strane ... na druhe strane"
+    },
+    {
+     "en": "weder ... noch",
+     "cz": "ani ... ani"
+    },
+    {
+     "en": "sowohl ... als auch",
+     "cz": "jak ... tak i"
+    },
+    {
+     "en": "entweder ... oder",
+     "cz": "bud ... nebo"
+    }
+   ],
+   "info": "Rozdíly mezi podobnými slovy: kennen (znát koho/co) × wissen (vědět že), mögen (mít rád) × gefallen (líbit se), ändern × verändern, benutzen × verwenden.\n\nPříklady:\nIch kenne ihn. × Ich weiß, wo er wohnt.\nDas Bild gefällt mir. — Ten obraz se mi líbí."
+  },
+  {
+   "id": "collocations_german",
+   "name": "Kolokace a ustálena spojeni",
+   "cards": [
+    {
+     "en": "eine Entscheidung treffen",
+     "cz": "ucinit rozhodnuti"
+    },
+    {
+     "en": "eine Rolle spielen",
+     "cz": "hrat roli"
+    },
+    {
+     "en": "in Frage kommen",
+     "cz": "pripadat v uvahu"
+    },
+    {
+     "en": "Bescheid wissen",
+     "cz": "vedet / byt informovan"
+    },
+    {
+     "en": "zur Verfuegung stehen",
+     "cz": "byt k dispozici"
+    },
+    {
+     "en": "in Betracht ziehen",
+     "cz": "vzit v uvahu"
+    },
+    {
+     "en": "Ruecksicht nehmen auf",
+     "cz": "brat ohled na"
+    },
+    {
+     "en": "einen Beitrag leisten",
+     "cz": "prispet"
+    },
+    {
+     "en": "Einfluss ausueben auf",
+     "cz": "mit vliv na"
+    },
+    {
+     "en": "zum Ausdruck bringen",
+     "cz": "vyjadrit"
+    },
+    {
+     "en": "in Anspruch nehmen",
+     "cz": "vyuzit (sluzbu)"
+    },
+    {
+     "en": "Wert legen auf",
+     "cz": "klast duraz na"
+    },
+    {
+     "en": "zu dem Schluss kommen",
+     "cz": "dojit k zaveru"
+    },
+    {
+     "en": "den Ueberblick verlieren",
+     "cz": "ztratit prehled"
+    },
+    {
+     "en": "eine Loesung finden",
+     "cz": "najit reseni"
+    },
+    {
+     "en": "sich Muehe geben",
+     "cz": "davat si namahu"
+    },
+    {
+     "en": "auf dem Laufenden bleiben",
+     "cz": "byt v obraze"
+    },
+    {
+     "en": "einen Kompromiss schliessen",
+     "cz": "uzavrit kompromis"
+    },
+    {
+     "en": "Fortschritte machen",
+     "cz": "delat pokroky"
+    },
+    {
+     "en": "im Grunde genommen",
+     "cz": "v podstate"
+    }
+   ],
+   "info": "Ustálená spojení: eine Entscheidung treffen (NE machen!), Sport treiben, ein Gespräch führen, Abschied nehmen.\n\nPříklady:\neine Rolle spielen — hrát roli\nsich Mühe geben — snažit se\nin Erfüllung gehen — splnit se (sen)"
+  }
+ ]
 }

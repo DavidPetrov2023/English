@@ -56,16 +56,17 @@ Future<void> applyUpdate() async {
         }
       }
     }
-    // Vyčistit Cache API
-    final caches = html.window.navigator;
+    // Vyčistit Cache API (window.caches — POZOR, není na navigator!)
     try {
-      // ignore: avoid_dynamic_calls
-      await (caches as dynamic).caches?.keys()?.then((keys) async {
-        for (final key in keys) {
-          // ignore: avoid_dynamic_calls
-          await (caches as dynamic).caches?.delete(key);
+      final cs = html.window.caches;
+      if (cs != null) {
+        final keys = await cs.keys();
+        for (final key in (keys as List)) {
+          try {
+            await cs.delete(key as String);
+          } catch (_) {}
         }
-      });
+      }
     } catch (_) {}
   } catch (_) {}
   html.window.location.reload();
