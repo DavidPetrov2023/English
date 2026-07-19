@@ -1601,6 +1601,13 @@ class _HomeScreenState extends State<HomeScreen> {
                       progress: progress,
                       onSaveProgress: _saveProgress,
                       langConfig: langConfig,
+                      onDeleteCard: (card) async {
+                        setState(() {
+                          myCards.removeWhere((c) => c.en == card.en && c.cz == card.cz);
+                        });
+                        await _saveMyCards();
+                        return true;
+                      },
                     ),
                   ),
                 ).then((_) => setState(() {})),
@@ -1649,6 +1656,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         progress: progress,
                         onSaveProgress: _saveProgress,
                         langConfig: langConfig,
+                        // Mazání globálních karet: jen admin, server ověřuje ADMIN_EMAILS
+                        onDeleteCard: _isAdmin() ? _deleteDavidCard : null,
                       ),
                     ),
                   ).then((_) => setState(() {})),
@@ -1909,6 +1918,29 @@ class _HomeScreenState extends State<HomeScreen> {
         });
         await _saveMyCards();
       }
+    }
+  }
+
+  /// Admin: smaže globální kartu přes API (všem uživatelům!). Vrací úspěch.
+  Future<bool> _deleteDavidCard(FlashCard card) async {
+    final token = prefs.getString(AuthService.kTokenKey);
+    if (token == null || token.isEmpty) return false;
+    try {
+      final res = await AuthService.deleteDavidCard(token, {
+        'lang': langConfig.code,
+        'en': card.en,
+      });
+      if (res.statusCode != 200) return false;
+      setState(() {
+        davidCards.removeWhere((c) => c.en == card.en);
+      });
+      await prefs.setString(
+        'david_cards_cache_${langConfig.code}',
+        json.encode({'cards': davidCards.map((c) => c.toJson()).toList()}),
+      );
+      return true;
+    } catch (_) {
+      return false;
     }
   }
 
@@ -2506,6 +2538,9 @@ class LearningScreen extends StatefulWidget {
   final Function() onSaveProgress;
   final LanguageConfig langConfig;
   final bool initialIsEnToCz;
+  /// Mazání karty z přehledu (null = balíček mazání nepodporuje).
+  /// Vrací true při úspěchu — pak se karta odebere ze seznamu.
+  final Future<bool> Function(FlashCard)? onDeleteCard;
 
   const LearningScreen({
     super.key,
@@ -2515,6 +2550,7 @@ class LearningScreen extends StatefulWidget {
     required this.onSaveProgress,
     required this.langConfig,
     this.initialIsEnToCz = false,
+    this.onDeleteCard,
   });
 
   @override
@@ -3025,6 +3061,7 @@ class _LearningScreenState extends State<LearningScreen> {
           getCardProgress: _getCardProgress,
           flutterTts: flutterTts,
           langConfig: widget.langConfig,
+          onDelete: widget.onDeleteCard,
         ),
       ),
     );
@@ -3385,12 +3422,14 @@ class _LearningScreenState extends State<LearningScreen> {
 }
 
 // Cards Overview Screen
-class CardsOverviewScreen extends StatelessWidget {
+class CardsOverviewScreen extends StatefulWidget {
   final List<FlashCard> cards;
   final Color Function(FlashCard) getCardColor;
   final CardProgress Function(FlashCard) getCardProgress;
   final FlutterTts flutterTts;
   final LanguageConfig langConfig;
+  /// Mazání karty (null = tento balíček mazání nepodporuje).
+  final Future<bool> Function(FlashCard)? onDelete;
 
   const CardsOverviewScreen({
     super.key,
@@ -3399,13 +3438,66 @@ class CardsOverviewScreen extends StatelessWidget {
     required this.getCardProgress,
     required this.flutterTts,
     required this.langConfig,
+    this.onDelete,
   });
+
+  @override
+  State<CardsOverviewScreen> createState() => _CardsOverviewScreenState();
+}
+
+class _CardsOverviewScreenState extends State<CardsOverviewScreen> {
+  List<FlashCard> get cards => widget.cards;
+  Color Function(FlashCard) get getCardColor => widget.getCardColor;
+  CardProgress Function(FlashCard) get getCardProgress => widget.getCardProgress;
+  FlutterTts get flutterTts => widget.flutterTts;
+  LanguageConfig get langConfig => widget.langConfig;
+
+  Future<void> _confirmAndDelete(NavigatorState detailNav, FlashCard card) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF16213E),
+        title: const Text('Smazat kartičku?'),
+        content: Text(
+          '„${card.en}“\n\nSmazání je nevratné.',
+          style: const TextStyle(height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Zrušit'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Smazat'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final ok = await widget.onDelete!(card);
+    if (!mounted) return;
+    if (ok) {
+      // Vlastník seznamu (HomeScreen) kartu odebral — stačí překreslit.
+      setState(() {});
+      detailNav.pop(); // zavřít detail karty
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Kartička smazána')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Smazání se nepodařilo (server/připojení)')),
+      );
+    }
+  }
 
   void _showCardDetail(BuildContext context, FlashCard card) {
     final prog = getCardProgress(card);
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         backgroundColor: const Color(0xFF16213E),
         title: Text(card.en, style: const TextStyle(fontSize: 16)),
         content: Column(
@@ -3434,6 +3526,12 @@ class CardsOverviewScreen extends StatelessWidget {
           ],
         ),
         actions: [
+          if (widget.onDelete != null)
+            TextButton(
+              onPressed: () => _confirmAndDelete(Navigator.of(dialogContext), card),
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('Smazat'),
+            ),
           TextButton(
             onPressed: () async {
               await flutterTts.setLanguage(langConfig.ttsLocale);
@@ -3442,7 +3540,7 @@ class CardsOverviewScreen extends StatelessWidget {
             child: const Text('🔊 Přehrát'),
           ),
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
             child: const Text('Zavřít'),
           ),
         ],
@@ -3800,6 +3898,8 @@ class AuthService {
     final http.Response res;
     if (method == 'POST') {
       res = await http.post(uri, headers: headers, body: body != null ? json.encode(body) : null);
+    } else if (method == 'DELETE') {
+      res = await http.delete(uri, headers: headers, body: body != null ? json.encode(body) : null);
     } else {
       res = await http.get(uri, headers: headers);
     }
@@ -3846,6 +3946,10 @@ class AuthService {
   /// Admin: přidání globální karty (server ověřuje ADMIN_EMAILS).
   static Future<ApiResult> addDavidCard(String token, Map<String, dynamic> card) =>
       _request('POST', 'david_cards.php', body: card, token: token);
+
+  /// Admin: smazání globální karty podle EN textu (server ověřuje ADMIN_EMAILS).
+  static Future<ApiResult> deleteDavidCard(String token, Map<String, dynamic> card) =>
+      _request('DELETE', 'david_cards.php', body: card, token: token);
 }
 
 // ===== Login Screen =====
