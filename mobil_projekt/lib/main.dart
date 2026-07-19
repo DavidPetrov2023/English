@@ -1184,7 +1184,11 @@ class _HomeScreenState extends State<HomeScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) => Padding(
+      builder: (context) => SafeArea(
+        // top: false — sheet je dole; bottom inset chrání před navigační lištou
+        top: false,
+        child: SingleChildScrollView(
+        child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1290,8 +1294,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 _showHowItWorksDialog();
               },
             ),
-            SizedBox(height: MediaQuery.of(context).padding.bottom + 48),
+            const SizedBox(height: 12),
           ],
+        ),
+        ),
         ),
       ),
     );
@@ -2441,7 +2447,9 @@ class _GrammarLevelScreenState extends State<GrammarLevelScreen> {
         elevation: 0,
       ),
       body: ListView.builder(
-        padding: const EdgeInsets.all(16),
+        // Bottom padding navíc kvůli systémové navigační liště telefonu.
+        padding: EdgeInsets.fromLTRB(
+            16, 16, 16, 16 + MediaQuery.of(context).padding.bottom),
         itemCount: widget.level.categories.length,
         itemBuilder: (context, index) {
           final category = widget.level.categories[index];
@@ -3593,7 +3601,10 @@ class _CardsOverviewScreenState extends State<CardsOverviewScreen> {
           ),
           Expanded(
             child: ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              // Bottom padding navíc, ať poslední karta není schovaná za
+              // systémovou navigační lištou telefonu.
+              padding: EdgeInsets.fromLTRB(
+                  8, 4, 8, 4 + MediaQuery.of(context).padding.bottom),
               itemCount: cards.length,
               itemBuilder: (context, index) {
                 final card = cards[index];
@@ -3772,6 +3783,9 @@ class _NemeckySUsmevemScreenState extends State<NemeckySUsmevemScreen> {
                 ),
                 Expanded(
                   child: ListView.builder(
+                    // Bottom padding kvůli systémové navigační liště telefonu.
+                    padding: EdgeInsets.only(
+                        bottom: MediaQuery.of(context).padding.bottom),
                     itemCount: lessons.length,
                     itemBuilder: (context, index) {
                       final lesson = lessons[index];
