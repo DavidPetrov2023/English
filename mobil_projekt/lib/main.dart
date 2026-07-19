@@ -284,6 +284,18 @@ class EnglishLearningApp extends StatelessWidget {
   }
 }
 
+/// Normalizace pro hledání/porovnávání: lowercase + odstranění diakritiky (cs/de).
+String searchFold(String s) {
+  const map = {
+    'á': 'a', 'č': 'c', 'ď': 'd', 'é': 'e', 'ě': 'e', 'í': 'i', 'ň': 'n',
+    'ó': 'o', 'ř': 'r', 'š': 's', 'ť': 't', 'ú': 'u', 'ů': 'u', 'ý': 'y',
+    'ž': 'z', 'ä': 'a', 'ö': 'o', 'ü': 'u', 'ß': 'ss',
+  };
+  var out = s.toLowerCase();
+  map.forEach((k, v) => out = out.replaceAll(k, v));
+  return out;
+}
+
 // Data models
 class FlashCard {
   final String en;
@@ -1813,7 +1825,8 @@ class _HomeScreenState extends State<HomeScreen> {
             return AlertDialog(
               backgroundColor: const Color(0xFF16213E),
               title: const Text('Přidat kartičku'),
-              content: Column(
+              content: SingleChildScrollView(
+                child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   TextField(
@@ -1839,6 +1852,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                     ),
                     maxLines: 2,
+                    onChanged: (_) => setDialogState(() {}),
                   ),
                   const SizedBox(height: 12),
                   TextField(
@@ -1856,7 +1870,43 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                     maxLines: 2,
+                    onChanged: (_) => setDialogState(() {}),
                   ),
+                  // Živá kontrola duplicit: podobné existující karty (David + moje)
+                  Builder(builder: (context) {
+                    final q = searchFold(enController.text.trim());
+                    final qc = searchFold(czController.text.trim());
+                    final similar = <FlashCard>[];
+                    if (q.length >= 2 || qc.length >= 2) {
+                      for (final c in [...davidCards, ...myCards]) {
+                        if ((q.length >= 2 && searchFold(c.en).contains(q)) ||
+                            (qc.length >= 2 && searchFold(c.cz).contains(qc))) {
+                          similar.add(c);
+                          if (similar.length >= 5) break;
+                        }
+                      }
+                    }
+                    if (similar.isEmpty) return const SizedBox.shrink();
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 10),
+                        const Text(
+                          '⚠ Podobné už existuje:',
+                          style: TextStyle(color: Color(0xFFF39C12), fontSize: 12),
+                        ),
+                        const SizedBox(height: 4),
+                        ...similar.map((c) => Padding(
+                              padding: const EdgeInsets.only(bottom: 3),
+                              child: Text(
+                                '• ${c.en} — ${c.cz}',
+                                style: TextStyle(
+                                    color: Colors.grey[400], fontSize: 12, height: 1.3),
+                              ),
+                            )),
+                      ],
+                    );
+                  }),
                   if (isAdminUser) ...[
                     const SizedBox(height: 8),
                     SwitchListTile(
@@ -1884,6 +1934,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ],
                   ],
                 ],
+                ),
               ),
               actions: [
                 TextButton(
@@ -3038,99 +3089,6 @@ class _LearningScreenState extends State<LearningScreen> {
     _showNextCard();
   }
 
-  /// Normalizace pro hledání: lowercase + odstranění diakritiky (cs/de).
-  static String _searchFold(String s) {
-    const map = {
-      'á': 'a', 'č': 'c', 'ď': 'd', 'é': 'e', 'ě': 'e', 'í': 'i', 'ň': 'n',
-      'ó': 'o', 'ř': 'r', 'š': 's', 'ť': 't', 'ú': 'u', 'ů': 'u', 'ý': 'y',
-      'ž': 'z', 'ä': 'a', 'ö': 'o', 'ü': 'u', 'ß': 'ss',
-    };
-    var out = s.toLowerCase();
-    map.forEach((k, v) => out = out.replaceAll(k, v));
-    return out;
-  }
-
-  /// Hledání v aktuálním balíčku podle jazyka otázky (dle zvoleného směru).
-  /// Účel: rychle ověřit, jestli slovo/věta už v kartičkách je (duplicity).
-  void _showSearchDialog() {
-    final controller = TextEditingController();
-    final searchLang = isEnToCz ? widget.langConfig.code.toUpperCase() : 'CZ';
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          final q = _searchFold(controller.text.trim());
-          final results = q.isEmpty
-              ? const <FlashCard>[]
-              : widget.cards
-                  .where((c) => _searchFold(isEnToCz ? c.en : c.cz).contains(q))
-                  .toList();
-          return AlertDialog(
-            backgroundColor: const Color(0xFF16213E),
-            title: Text('Hledat podle $searchLang', style: const TextStyle(fontSize: 17)),
-            content: SizedBox(
-              width: double.maxFinite,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  TextField(
-                    controller: controller,
-                    autofocus: true,
-                    decoration: const InputDecoration(
-                      hintText: 'Zadej hledané slovo…',
-                      prefixIcon: Icon(Icons.search),
-                      border: OutlineInputBorder(),
-                    ),
-                    onChanged: (_) => setDialogState(() {}),
-                  ),
-                  const SizedBox(height: 10),
-                  if (q.isNotEmpty)
-                    Text(
-                      results.isEmpty
-                          ? 'Nic nenalezeno — tohle tu ještě není.'
-                          : 'Nalezeno: ${results.length}',
-                      style: TextStyle(color: Colors.grey[400], fontSize: 12),
-                    ),
-                  const SizedBox(height: 6),
-                  Flexible(
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      itemCount: results.length,
-                      itemBuilder: (context, index) {
-                        final c = results[index];
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 5),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(c.en,
-                                  style: const TextStyle(
-                                      fontSize: 14, fontWeight: FontWeight.w500)),
-                              Text(c.cz,
-                                  style: const TextStyle(
-                                      fontSize: 13, color: Color(0xFF00D9FF))),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Zavřít'),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
   void _toggleDirection() {
     setState(() {
       isEnToCz = !isEnToCz;
@@ -3240,13 +3198,6 @@ class _LearningScreenState extends State<LearningScreen> {
                   _buildDirectionButton(widget.langConfig.directionLabel(true), isEnToCz),
                   const SizedBox(width: 10),
                   _buildDirectionButton(widget.langConfig.directionLabel(false), !isEnToCz),
-                  const SizedBox(width: 6),
-                  IconButton(
-                    icon: const Icon(Icons.search, color: Color(0xFF00D9FF)),
-                    tooltip: 'Hledat v kartičkách',
-                    visualDensity: VisualDensity.compact,
-                    onPressed: _showSearchDialog,
-                  ),
                 ],
               ),
               const SizedBox(height: 20),
@@ -3554,6 +3505,25 @@ class CardsOverviewScreen extends StatefulWidget {
 }
 
 class _CardsOverviewScreenState extends State<CardsOverviewScreen> {
+  final _searchController = TextEditingController();
+  bool _searchActive = false;
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  /// Karty po aplikaci vyhledávacího filtru (EN i CZ, bez diakritiky).
+  List<FlashCard> get _filteredCards {
+    final q = searchFold(_searchController.text.trim());
+    if (!_searchActive || q.isEmpty) return widget.cards;
+    return widget.cards
+        .where((c) =>
+            searchFold(c.en).contains(q) || searchFold(c.cz).contains(q))
+        .toList();
+  }
+
   List<FlashCard> get cards => widget.cards;
   Color Function(FlashCard) get getCardColor => widget.getCardColor;
   CardProgress Function(FlashCard) get getCardProgress => widget.getCardProgress;
@@ -3678,9 +3648,31 @@ class _CardsOverviewScreenState extends State<CardsOverviewScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFF1A1A2E),
       appBar: AppBar(
-        title: const Text('Přehled kartiček'),
+        title: _searchActive
+            ? TextField(
+                controller: _searchController,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  hintText: 'Hledat slovo (EN i CZ)…',
+                  border: InputBorder.none,
+                ),
+                style: const TextStyle(fontSize: 16),
+                onChanged: (_) => setState(() {}),
+              )
+            : const Text('Přehled kartiček'),
         backgroundColor: Colors.transparent,
         elevation: 0,
+        actions: [
+          IconButton(
+            icon: Icon(_searchActive ? Icons.close : Icons.search,
+                color: const Color(0xFF00D9FF)),
+            tooltip: _searchActive ? 'Zrušit hledání' : 'Hledat',
+            onPressed: () => setState(() {
+              _searchActive = !_searchActive;
+              if (!_searchActive) _searchController.clear();
+            }),
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -3699,15 +3691,23 @@ class _CardsOverviewScreenState extends State<CardsOverviewScreen> {
               ],
             ),
           ),
+          if (_searchActive)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text(
+                'Nalezeno: ${_filteredCards.length} z ${cards.length}',
+                style: TextStyle(color: Colors.grey[500], fontSize: 12),
+              ),
+            ),
           Expanded(
             child: ListView.builder(
               // Bottom padding navíc, ať poslední karta není schovaná za
               // systémovou navigační lištou telefonu.
               padding: EdgeInsets.fromLTRB(
                   8, 4, 8, 4 + MediaQuery.of(context).padding.bottom),
-              itemCount: cards.length,
+              itemCount: _filteredCards.length,
               itemBuilder: (context, index) {
-                final card = cards[index];
+                final card = _filteredCards[index];
                 final color = getCardColor(card);
                 return GestureDetector(
                   onTap: () => _showCardDetail(context, card),
