@@ -3038,6 +3038,99 @@ class _LearningScreenState extends State<LearningScreen> {
     _showNextCard();
   }
 
+  /// Normalizace pro hledání: lowercase + odstranění diakritiky (cs/de).
+  static String _searchFold(String s) {
+    const map = {
+      'á': 'a', 'č': 'c', 'ď': 'd', 'é': 'e', 'ě': 'e', 'í': 'i', 'ň': 'n',
+      'ó': 'o', 'ř': 'r', 'š': 's', 'ť': 't', 'ú': 'u', 'ů': 'u', 'ý': 'y',
+      'ž': 'z', 'ä': 'a', 'ö': 'o', 'ü': 'u', 'ß': 'ss',
+    };
+    var out = s.toLowerCase();
+    map.forEach((k, v) => out = out.replaceAll(k, v));
+    return out;
+  }
+
+  /// Hledání v aktuálním balíčku podle jazyka otázky (dle zvoleného směru).
+  /// Účel: rychle ověřit, jestli slovo/věta už v kartičkách je (duplicity).
+  void _showSearchDialog() {
+    final controller = TextEditingController();
+    final searchLang = isEnToCz ? widget.langConfig.code.toUpperCase() : 'CZ';
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final q = _searchFold(controller.text.trim());
+          final results = q.isEmpty
+              ? const <FlashCard>[]
+              : widget.cards
+                  .where((c) => _searchFold(isEnToCz ? c.en : c.cz).contains(q))
+                  .toList();
+          return AlertDialog(
+            backgroundColor: const Color(0xFF16213E),
+            title: Text('Hledat podle $searchLang', style: const TextStyle(fontSize: 17)),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    controller: controller,
+                    autofocus: true,
+                    decoration: const InputDecoration(
+                      hintText: 'Zadej hledané slovo…',
+                      prefixIcon: Icon(Icons.search),
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (_) => setDialogState(() {}),
+                  ),
+                  const SizedBox(height: 10),
+                  if (q.isNotEmpty)
+                    Text(
+                      results.isEmpty
+                          ? 'Nic nenalezeno — tohle tu ještě není.'
+                          : 'Nalezeno: ${results.length}',
+                      style: TextStyle(color: Colors.grey[400], fontSize: 12),
+                    ),
+                  const SizedBox(height: 6),
+                  Flexible(
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: results.length,
+                      itemBuilder: (context, index) {
+                        final c = results[index];
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 5),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(c.en,
+                                  style: const TextStyle(
+                                      fontSize: 14, fontWeight: FontWeight.w500)),
+                              Text(c.cz,
+                                  style: const TextStyle(
+                                      fontSize: 13, color: Color(0xFF00D9FF))),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Zavřít'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   void _toggleDirection() {
     setState(() {
       isEnToCz = !isEnToCz;
@@ -3147,6 +3240,13 @@ class _LearningScreenState extends State<LearningScreen> {
                   _buildDirectionButton(widget.langConfig.directionLabel(true), isEnToCz),
                   const SizedBox(width: 10),
                   _buildDirectionButton(widget.langConfig.directionLabel(false), !isEnToCz),
+                  const SizedBox(width: 6),
+                  IconButton(
+                    icon: const Icon(Icons.search, color: Color(0xFF00D9FF)),
+                    tooltip: 'Hledat v kartičkách',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: _showSearchDialog,
+                  ),
                 ],
               ),
               const SizedBox(height: 20),
