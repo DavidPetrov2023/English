@@ -1697,284 +1697,30 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _addNewCard({bool presetDavid = false}) async {
-    final enController = TextEditingController();
-    final czController = TextEditingController();
-    final speech = stt.SpeechToText();
-
     final isAdminUser = _isAdmin();
-    bool addToDavid = presetDavid && isAdminUser;
-    final noteController = TextEditingController();
-
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        bool isListeningEn = false;
-        bool isListeningCz = false;
-
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            bool isTranslating = false;
-
-            Future<String?> translateText(String text, String from, String to) async {
-              try {
-                final uri = Uri.parse(
-                  'https://api.mymemory.translated.net/get?q=${Uri.encodeComponent(text)}&langpair=$from|$to',
-                );
-                final response = await http.get(uri);
-                final data = json.decode(response.body);
-                if (data['responseStatus'] == 200) {
-                  String result = data['responseData']['translatedText'] as String;
-                  result = result
-                      .replaceAll('&quot;', '')
-                      .replaceAll('&amp;', '&')
-                      .replaceAll('&lt;', '<')
-                      .replaceAll('&gt;', '>')
-                      .replaceAll('&#39;', '')
-                      .trim();
-                  // Remove any stray quotes/apostrophes at the very end or start
-                  result = result.replaceAll(RegExp(r'''["""„''\u2018\u2019\u201C\u201D\u201E]$'''), '');
-                  result = result.replaceAll(RegExp(r'''^["""„''\u2018\u2019\u201C\u201D\u201E]'''), '');
-                  result = result.trim();
-                  return result;
-                }
-              } catch (_) {}
-              return null;
-            }
-
-            Future<void> toggleListening(TextEditingController controller, String localeId, bool isEn) async {
-              if (isEn ? isListeningEn : isListeningCz) {
-                await speech.stop();
-                setDialogState(() {
-                  if (isEn) {
-                    isListeningEn = false;
-                  } else {
-                    isListeningCz = false;
-                  }
-                });
-                return;
-              }
-
-              bool available = await speech.initialize(
-                onError: (error) {
-                  setDialogState(() {
-                    isListeningEn = false;
-                    isListeningCz = false;
-                  });
-                },
-              );
-
-              if (available) {
-                setDialogState(() {
-                  if (isEn) {
-                    isListeningEn = true;
-                  } else {
-                    isListeningCz = true;
-                  }
-                });
-                await speech.listen(
-                  onResult: (result) {
-                    setDialogState(() {
-                      controller.text = result.recognizedWords;
-                      controller.selection = TextSelection.fromPosition(
-                        TextPosition(offset: controller.text.length),
-                      );
-                      if (result.finalResult) {
-                        if (isEn) {
-                          isListeningEn = false;
-                          // Auto-translate EN/DE → CZ
-                          if (result.recognizedWords.isNotEmpty && czController.text.isEmpty) {
-                            isTranslating = true;
-                            translateText(result.recognizedWords, langConfig.code, 'cs').then((translated) {
-                              setDialogState(() {
-                                if (translated != null) {
-                                  czController.text = translated;
-                                  czController.selection = TextSelection.fromPosition(
-                                    TextPosition(offset: czController.text.length),
-                                  );
-                                }
-                                isTranslating = false;
-                              });
-                            });
-                          }
-                        } else {
-                          isListeningCz = false;
-                          // Auto-translate CZ → EN/DE
-                          if (result.recognizedWords.isNotEmpty && enController.text.isEmpty) {
-                            isTranslating = true;
-                            translateText(result.recognizedWords, 'cs', langConfig.code).then((translated) {
-                              setDialogState(() {
-                                if (translated != null) {
-                                  enController.text = translated;
-                                  enController.selection = TextSelection.fromPosition(
-                                    TextPosition(offset: enController.text.length),
-                                  );
-                                }
-                                isTranslating = false;
-                              });
-                            });
-                          }
-                        }
-                      }
-                    });
-                  },
-                  localeId: localeId,
-                );
-              }
-            }
-
-            return AlertDialog(
-              backgroundColor: const Color(0xFF16213E),
-              title: const Text('Přidat kartičku'),
-              content: SingleChildScrollView(
-                child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: enController,
-                    decoration: InputDecoration(
-                      labelText: langConfig.addCardLabel,
-                      hintText: langConfig.addCardHint,
-                      border: const OutlineInputBorder(),
-                      suffixIcon: isTranslating
-                        ? const Padding(
-                            padding: EdgeInsets.all(12),
-                            child: SizedBox(
-                              width: 20, height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
-                          )
-                        : IconButton(
-                            icon: Icon(
-                              isListeningEn ? Icons.mic : Icons.mic_none,
-                              color: isListeningEn ? Colors.red : Colors.grey,
-                            ),
-                            onPressed: () => toggleListening(enController, langConfig.ttsLocale, true),
-                          ),
-                    ),
-                    maxLines: 2,
-                    onChanged: (_) => setDialogState(() {}),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: czController,
-                    decoration: InputDecoration(
-                      labelText: 'Česky',
-                      hintText: 'Ahoj, jak se máš?',
-                      border: const OutlineInputBorder(),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          isListeningCz ? Icons.mic : Icons.mic_none,
-                          color: isListeningCz ? Colors.red : Colors.grey,
-                        ),
-                        onPressed: () => toggleListening(czController, 'cs-CZ', false),
-                      ),
-                    ),
-                    maxLines: 2,
-                    onChanged: (_) => setDialogState(() {}),
-                  ),
-                  // Živá kontrola duplicit: podobné existující karty (David + moje)
-                  Builder(builder: (context) {
-                    final q = searchFold(enController.text.trim());
-                    final qc = searchFold(czController.text.trim());
-                    final similar = <FlashCard>[];
-                    if (q.length >= 2 || qc.length >= 2) {
-                      for (final c in [...davidCards, ...myCards]) {
-                        if ((q.length >= 2 && searchFold(c.en).contains(q)) ||
-                            (qc.length >= 2 && searchFold(c.cz).contains(qc))) {
-                          similar.add(c);
-                          if (similar.length >= 5) break;
-                        }
-                      }
-                    }
-                    if (similar.isEmpty) return const SizedBox.shrink();
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const SizedBox(height: 10),
-                        const Text(
-                          '⚠ Podobné už existuje:',
-                          style: TextStyle(color: Color(0xFFF39C12), fontSize: 12),
-                        ),
-                        const SizedBox(height: 4),
-                        ...similar.map((c) => Padding(
-                              padding: const EdgeInsets.only(bottom: 3),
-                              child: Text(
-                                '• ${c.en} — ${c.cz}',
-                                style: TextStyle(
-                                    color: Colors.grey[400], fontSize: 12, height: 1.3),
-                              ),
-                            )),
-                      ],
-                    );
-                  }),
-                  if (isAdminUser) ...[
-                    const SizedBox(height: 8),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      dense: true,
-                      title: const Text('Přidat do „David Petrov kartičky"',
-                          style: TextStyle(fontSize: 14)),
-                      subtitle: const Text('Globálně — uvidí všichni uživatelé',
-                          style: TextStyle(fontSize: 11, color: Color(0xFFFFD700))),
-                      activeThumbColor: const Color(0xFFFFD700),
-                      value: addToDavid,
-                      onChanged: (v) => setDialogState(() => addToDavid = v),
-                    ),
-                    if (addToDavid) ...[
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: noteController,
-                        decoration: const InputDecoration(
-                          labelText: 'Nápověda ⓘ (volitelná)',
-                          hintText: 'Gramatická vysvětlivka ke kartě',
-                          border: OutlineInputBorder(),
-                        ),
-                        maxLines: 2,
-                      ),
-                    ],
-                  ],
-                ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    speech.stop();
-                    Navigator.pop(context, false);
-                  },
-                  child: const Text('Zrušit'),
-                ),
-                TextButton(
-                  onPressed: () {
-                    speech.stop();
-                    Navigator.pop(context, true);
-                  },
-                  child: const Text('Přidat'),
-                ),
-              ],
-            );
-          },
-        );
-      },
+    final result = await Navigator.push<Map<String, dynamic>>(
+      context,
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => AddCardScreen(
+          langConfig: langConfig,
+          isAdmin: isAdminUser,
+          presetDavid: presetDavid,
+          existingCards: [...davidCards, ...myCards],
+        ),
+      ),
     );
-
-    if (result == true && enController.text.isNotEmpty && czController.text.isNotEmpty) {
-      if (isAdminUser && addToDavid) {
-        await _addDavidCard(
-          enController.text.trim(),
-          czController.text.trim(),
-          noteController.text.trim(),
-        );
-      } else {
-        setState(() {
-          myCards.add(FlashCard(
-            en: enController.text,
-            cz: czController.text,
-            category: myCardsName,
-          ));
-        });
-        await _saveMyCards();
-      }
+    if (result == null) return;
+    final en = result['en'] as String;
+    final cz = result['cz'] as String;
+    final note = (result['note'] as String?) ?? '';
+    if (isAdminUser && result['toDavid'] == true) {
+      await _addDavidCard(en, cz, note);
+    } else {
+      setState(() {
+        myCards.add(FlashCard(en: en, cz: cz, category: myCardsName));
+      });
+      await _saveMyCards();
     }
   }
 
@@ -3477,6 +3223,332 @@ class _LearningScreenState extends State<LearningScreen> {
       _reveal();
     }
     await _speak();
+  }
+}
+
+// ===== Add Card Screen (celoobrazovkové přidání kartičky) =====
+
+class AddCardScreen extends StatefulWidget {
+  final LanguageConfig langConfig;
+  final bool isAdmin;
+  final bool presetDavid;
+  /// Existující karty (David + moje) pro živé našeptávání duplicit.
+  final List<FlashCard> existingCards;
+
+  const AddCardScreen({
+    super.key,
+    required this.langConfig,
+    required this.isAdmin,
+    required this.presetDavid,
+    required this.existingCards,
+  });
+
+  @override
+  State<AddCardScreen> createState() => _AddCardScreenState();
+}
+
+class _AddCardScreenState extends State<AddCardScreen> {
+  final enController = TextEditingController();
+  final czController = TextEditingController();
+  final noteController = TextEditingController();
+  final speech = stt.SpeechToText();
+  bool isListeningEn = false;
+  bool isListeningCz = false;
+  bool isTranslating = false;
+  late bool addToDavid = widget.presetDavid && widget.isAdmin;
+
+  @override
+  void dispose() {
+    speech.stop();
+    enController.dispose();
+    czController.dispose();
+    noteController.dispose();
+    super.dispose();
+  }
+
+  Future<String?> _translateText(String text, String from, String to) async {
+    try {
+      final uri = Uri.parse(
+        'https://api.mymemory.translated.net/get?q=${Uri.encodeComponent(text)}&langpair=$from|$to',
+      );
+      final response = await http.get(uri);
+      final data = json.decode(response.body);
+      if (data['responseStatus'] == 200) {
+        String result = data['responseData']['translatedText'] as String;
+        result = result
+            .replaceAll('&quot;', '')
+            .replaceAll('&amp;', '&')
+            .replaceAll('&lt;', '<')
+            .replaceAll('&gt;', '>')
+            .replaceAll('&#39;', '')
+            .trim();
+        // Remove any stray quotes/apostrophes at the very end or start
+        result = result.replaceAll(RegExp(r'''["“”„‘’']$'''), '');
+        result = result.replaceAll(RegExp(r'''^["“”„‘’']'''), '');
+        result = result.trim();
+        return result;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<void> _toggleListening(
+      TextEditingController controller, String localeId, bool isEn) async {
+    if (isEn ? isListeningEn : isListeningCz) {
+      await speech.stop();
+      setState(() {
+        if (isEn) {
+          isListeningEn = false;
+        } else {
+          isListeningCz = false;
+        }
+      });
+      return;
+    }
+
+    bool available = await speech.initialize(
+      onError: (error) {
+        setState(() {
+          isListeningEn = false;
+          isListeningCz = false;
+        });
+      },
+    );
+
+    if (available) {
+      setState(() {
+        if (isEn) {
+          isListeningEn = true;
+        } else {
+          isListeningCz = true;
+        }
+      });
+      await speech.listen(
+        onResult: (result) {
+          setState(() {
+            controller.text = result.recognizedWords;
+            controller.selection = TextSelection.fromPosition(
+              TextPosition(offset: controller.text.length),
+            );
+            if (result.finalResult) {
+              if (isEn) {
+                isListeningEn = false;
+                // Auto-translate EN/DE -> CZ
+                if (result.recognizedWords.isNotEmpty && czController.text.isEmpty) {
+                  isTranslating = true;
+                  _translateText(result.recognizedWords, widget.langConfig.code, 'cs')
+                      .then((translated) {
+                    if (!mounted) return;
+                    setState(() {
+                      if (translated != null) {
+                        czController.text = translated;
+                        czController.selection = TextSelection.fromPosition(
+                          TextPosition(offset: czController.text.length),
+                        );
+                      }
+                      isTranslating = false;
+                    });
+                  });
+                }
+              } else {
+                isListeningCz = false;
+                // Auto-translate CZ -> EN/DE
+                if (result.recognizedWords.isNotEmpty && enController.text.isEmpty) {
+                  isTranslating = true;
+                  _translateText(result.recognizedWords, 'cs', widget.langConfig.code)
+                      .then((translated) {
+                    if (!mounted) return;
+                    setState(() {
+                      if (translated != null) {
+                        enController.text = translated;
+                        enController.selection = TextSelection.fromPosition(
+                          TextPosition(offset: enController.text.length),
+                        );
+                      }
+                      isTranslating = false;
+                    });
+                  });
+                }
+              }
+            }
+          });
+        },
+        localeId: localeId,
+      );
+    }
+  }
+
+  /// Podobné existující karty (živá kontrola duplicit, EN i CZ, bez diakritiky).
+  List<FlashCard> get _similar {
+    final q = searchFold(enController.text.trim());
+    final qc = searchFold(czController.text.trim());
+    final out = <FlashCard>[];
+    if (q.length >= 2 || qc.length >= 2) {
+      for (final c in widget.existingCards) {
+        if ((q.length >= 2 && searchFold(c.en).contains(q)) ||
+            (qc.length >= 2 && searchFold(c.cz).contains(qc))) {
+          out.add(c);
+          if (out.length >= 8) break;
+        }
+      }
+    }
+    return out;
+  }
+
+  void _submit() {
+    final en = enController.text.trim();
+    final cz = czController.text.trim();
+    if (en.isEmpty || cz.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Vyplň obě pole.')),
+      );
+      return;
+    }
+    speech.stop();
+    Navigator.pop(context, {
+      'en': en,
+      'cz': cz,
+      'note': noteController.text.trim(),
+      'toDavid': addToDavid,
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final similar = _similar;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Přidat kartičku'),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        actions: [
+          TextButton(
+            onPressed: _submit,
+            child: const Text('Přidat',
+                style: TextStyle(
+                    color: Color(0xFF00FF88),
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: enController,
+                decoration: InputDecoration(
+                  labelText: widget.langConfig.addCardLabel,
+                  hintText: widget.langConfig.addCardHint,
+                  border: const OutlineInputBorder(),
+                  suffixIcon: isTranslating
+                      ? const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        )
+                      : IconButton(
+                          icon: Icon(
+                            isListeningEn ? Icons.mic : Icons.mic_none,
+                            color: isListeningEn ? Colors.red : Colors.grey,
+                          ),
+                          onPressed: () => _toggleListening(
+                              enController, widget.langConfig.ttsLocale, true),
+                        ),
+                ),
+                maxLines: 3,
+                minLines: 1,
+                onChanged: (_) => setState(() {}),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: czController,
+                decoration: InputDecoration(
+                  labelText: 'Česky',
+                  hintText: 'Ahoj, jak se máš?',
+                  border: const OutlineInputBorder(),
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      isListeningCz ? Icons.mic : Icons.mic_none,
+                      color: isListeningCz ? Colors.red : Colors.grey,
+                    ),
+                    onPressed: () =>
+                        _toggleListening(czController, 'cs-CZ', false),
+                  ),
+                ),
+                maxLines: 3,
+                minLines: 1,
+                onChanged: (_) => setState(() {}),
+              ),
+              if (widget.isAdmin) ...[
+                const SizedBox(height: 8),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  title: const Text('Přidat do „David Petrov kartičky“',
+                      style: TextStyle(fontSize: 14)),
+                  subtitle: const Text('Globálně — uvidí všichni uživatelé',
+                      style: TextStyle(fontSize: 11, color: Color(0xFFFFD700))),
+                  activeThumbColor: const Color(0xFFFFD700),
+                  value: addToDavid,
+                  onChanged: (v) => setState(() => addToDavid = v),
+                ),
+                if (addToDavid) ...[
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: noteController,
+                    decoration: const InputDecoration(
+                      labelText: 'Nápověda ⓘ (volitelná)',
+                      hintText: 'Gramatická vysvětlivka ke kartě',
+                      border: OutlineInputBorder(),
+                    ),
+                    maxLines: 2,
+                  ),
+                ],
+              ],
+              const SizedBox(height: 20),
+              if (similar.isNotEmpty) ...[
+                Text(
+                  '⚠ Podobné už existuje (${similar.length}):',
+                  style: const TextStyle(color: Color(0xFFF39C12), fontSize: 13),
+                ),
+                const SizedBox(height: 8),
+                ...similar.map((c) => Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.only(bottom: 6),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF16213E),
+                        borderRadius: BorderRadius.circular(6),
+                        border: const Border(
+                          left: BorderSide(color: Color(0xFFF39C12), width: 3),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(c.en,
+                              style: const TextStyle(
+                                  fontSize: 14, fontWeight: FontWeight.w500)),
+                          Text(c.cz,
+                              style: const TextStyle(
+                                  fontSize: 13, color: Color(0xFF00D9FF))),
+                        ],
+                      ),
+                    )),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
