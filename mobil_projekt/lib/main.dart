@@ -3256,9 +3256,14 @@ class _AddCardScreenState extends State<AddCardScreen> {
   bool isListeningCz = false;
   bool isTranslating = false;
   late bool addToDavid = widget.presetDavid && widget.isAdmin;
+  Timer? _typeDebounce;
+  // Poslední automaticky doplněné překlady — jen ty smíme přepsat novým překladem.
+  String? _autoFilledEn;
+  String? _autoFilledCz;
 
   @override
   void dispose() {
+    _typeDebounce?.cancel();
     speech.stop();
     enController.dispose();
     czController.dispose();
@@ -3290,6 +3295,45 @@ class _AddCardScreenState extends State<AddCardScreen> {
       }
     } catch (_) {}
     return null;
+  }
+
+  /// Automatický překlad při psaní na klávesnici (s prodlevou po dopsání).
+  /// Druhé pole vyplní jen pokud je prázdné, nebo obsahuje předchozí
+  /// automatický překlad — ručně napsaný text nikdy nepřepisuje.
+  void _onTyped(bool fromEn) {
+    _typeDebounce?.cancel();
+    _typeDebounce = Timer(const Duration(milliseconds: 900), () {
+      if (!mounted) return;
+      final source = (fromEn ? enController : czController).text.trim();
+      final target = fromEn ? czController : enController;
+      final canFill = target.text.trim().isEmpty ||
+          target.text == (fromEn ? _autoFilledCz : _autoFilledEn);
+      if (source.length < 2 || !canFill) return;
+      setState(() => isTranslating = true);
+      final from = fromEn ? widget.langConfig.code : 'cs';
+      final to = fromEn ? 'cs' : widget.langConfig.code;
+      _translateText(source, from, to).then((translated) {
+        if (!mounted) return;
+        setState(() {
+          isTranslating = false;
+          // Text se mezitím změnil — výsledek už neplatí.
+          if ((fromEn ? enController : czController).text.trim() != source) {
+            return;
+          }
+          if (translated != null && translated.isNotEmpty) {
+            target.text = translated;
+            target.selection = TextSelection.fromPosition(
+              TextPosition(offset: target.text.length),
+            );
+            if (fromEn) {
+              _autoFilledCz = translated;
+            } else {
+              _autoFilledEn = translated;
+            }
+          }
+        });
+      });
+    });
   }
 
   Future<void> _toggleListening(
@@ -3345,6 +3389,7 @@ class _AddCardScreenState extends State<AddCardScreen> {
                         czController.selection = TextSelection.fromPosition(
                           TextPosition(offset: czController.text.length),
                         );
+                        _autoFilledCz = translated;
                       }
                       isTranslating = false;
                     });
@@ -3364,6 +3409,7 @@ class _AddCardScreenState extends State<AddCardScreen> {
                         enController.selection = TextSelection.fromPosition(
                           TextPosition(offset: enController.text.length),
                         );
+                        _autoFilledEn = translated;
                       }
                       isTranslating = false;
                     });
@@ -3464,7 +3510,10 @@ class _AddCardScreenState extends State<AddCardScreen> {
                 ),
                 maxLines: 3,
                 minLines: 1,
-                onChanged: (_) => setState(() {}),
+                onChanged: (_) {
+                  setState(() {});
+                  _onTyped(true);
+                },
               ),
               const SizedBox(height: 16),
               TextField(
@@ -3473,18 +3522,30 @@ class _AddCardScreenState extends State<AddCardScreen> {
                   labelText: 'Česky',
                   hintText: 'Ahoj, jak se máš?',
                   border: const OutlineInputBorder(),
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      isListeningCz ? Icons.mic : Icons.mic_none,
-                      color: isListeningCz ? Colors.red : Colors.grey,
-                    ),
-                    onPressed: () =>
-                        _toggleListening(czController, 'cs-CZ', false),
-                  ),
+                  suffixIcon: isTranslating
+                      ? const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        )
+                      : IconButton(
+                          icon: Icon(
+                            isListeningCz ? Icons.mic : Icons.mic_none,
+                            color: isListeningCz ? Colors.red : Colors.grey,
+                          ),
+                          onPressed: () =>
+                              _toggleListening(czController, 'cs-CZ', false),
+                        ),
                 ),
                 maxLines: 3,
                 minLines: 1,
-                onChanged: (_) => setState(() {}),
+                onChanged: (_) {
+                  setState(() {});
+                  _onTyped(false);
+                },
               ),
               if (widget.isAdmin) ...[
                 const SizedBox(height: 8),
