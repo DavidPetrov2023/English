@@ -563,38 +563,77 @@ class _HomeScreenState extends State<HomeScreen> {
     return false;
   }
 
+  /// Zapamatovaná odpověď na konflikt záloh (true = vždy stáhnout ze serveru,
+  /// false = vždy ponechat data v zařízení, null = pokaždé se zeptat).
+  static const String kBackupConflictChoiceKey = 'backupConflictChoice';
+
   /// Dialog: lokální data vs. serverová záloha. true = stáhnout ze serveru.
-  Future<bool?> _askBackupConflict() {
-    return showDialog<bool>(
+  /// Zaškrtnutím „Příště se neptat" se volba uloží a dialog se už neukáže.
+  Future<bool?> _askBackupConflict() async {
+    bool remember = false;
+    final choice = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF16213E),
-        title: const Text('Nalezena záloha na serveru'),
-        content: const Text(
-          'V tomto zařízení už jsou uložená data (pokrok nebo kartičky) '
-          'a zároveň existuje záloha na serveru.\n\n'
-          'Kterou verzi chceš použít?\n\n'
-          'Pozn.: pokud ponecháš data v zařízení, serverová záloha se při '
-          'příští synchronizaci přepíše těmito daty.',
-          style: TextStyle(height: 1.4),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Ponechat data v zařízení'),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: const Color(0xFF16213E),
+          title: const Text('Nalezena záloha na serveru'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'V tomto zařízení už jsou uložená data (pokrok nebo kartičky) '
+                'a zároveň existuje záloha na serveru.\n\n'
+                'Kterou verzi chceš použít?\n\n'
+                'Pozn.: pokud ponecháš data v zařízení, serverová záloha se při '
+                'příští synchronizaci přepíše těmito daty.',
+                style: TextStyle(height: 1.4),
+              ),
+              const SizedBox(height: 8),
+              InkWell(
+                onTap: () => setDialogState(() => remember = !remember),
+                child: Row(
+                  children: [
+                    Checkbox(
+                      value: remember,
+                      activeColor: const Color(0xFF00D9FF),
+                      checkColor: Colors.black,
+                      onChanged: (v) =>
+                          setDialogState(() => remember = v ?? false),
+                    ),
+                    const Expanded(
+                      child: Text(
+                        'Příště se neptat (volbu lze změnit v nastavení)',
+                        style: TextStyle(fontSize: 13),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF00D9FF),
-              foregroundColor: Colors.black,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Ponechat data v zařízení'),
             ),
-            child: const Text('Stáhnout zálohu ze serveru'),
-          ),
-        ],
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF00D9FF),
+                foregroundColor: Colors.black,
+              ),
+              child: const Text('Stáhnout zálohu ze serveru'),
+            ),
+          ],
+        ),
       ),
     );
+    if (choice != null && remember) {
+      await prefs.setBool(kBackupConflictChoiceKey, choice);
+    }
+    return choice;
   }
 
   static const Set<String> _adminEmails = {'johndave@seznam.cz'};
@@ -644,7 +683,9 @@ class _HomeScreenState extends State<HomeScreen> {
       // Bez dotazu by je serverová záloha tiše přepsala.
       bool apply = true;
       if (_hasAnyLocalData() && mounted) {
-        apply = await _askBackupConflict() ?? true;
+        // Uživatel si mohl volbu zapamatovat („Příště se neptat").
+        final remembered = prefs.getBool(kBackupConflictChoiceKey);
+        apply = remembered ?? (await _askBackupConflict() ?? true);
       }
       if (apply) {
         await _applyRemoteBackup(widget.remoteBackup!);
@@ -1222,6 +1263,27 @@ class _HomeScreenState extends State<HomeScreen> {
                       context,
                       MaterialPageRoute(builder: (_) => const AdminScreen()),
                     );
+                  },
+                ),
+              if (prefs.getBool(kBackupConflictChoiceKey) != null)
+                ListTile(
+                  leading: const Icon(Icons.help_outline, color: Color(0xFF00D9FF)),
+                  title: const Text('Znovu se ptát na konflikt záloh'),
+                  subtitle: Text(
+                    prefs.getBool(kBackupConflictChoiceKey)!
+                        ? 'Nyní: vždy stáhnout zálohu ze serveru'
+                        : 'Nyní: vždy ponechat data v zařízení',
+                  ),
+                  onTap: () async {
+                    await prefs.remove(kBackupConflictChoiceKey);
+                    if (context.mounted) {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Při dalším konfliktu se aplikace zeptá'),
+                        ),
+                      );
+                    }
                   },
                 ),
               ListTile(
