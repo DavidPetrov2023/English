@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:http/http.dart' as http;
@@ -227,7 +228,9 @@ class _BackupStatusIconState extends State<BackupStatusIcon> {
   }
 }
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await AuthService.zjistiVerziKlienta();
   if (kIsWeb) {
     sw_update.startVersionPolling((newVersion) {
       _appMessengerKey.currentState?.showSnackBar(
@@ -1300,6 +1303,26 @@ class _HomeScreenState extends State<HomeScreen> {
                 leading: const Icon(Icons.logout, color: Colors.red),
                 title: const Text('Odhlásit'),
                 onTap: () async {
+                  // Odhlášení maže VŠECHNA lokální data, takže co není na
+                  // serveru, je nenávratně pryč. Proto se nejdřív nahraje
+                  // a když to nevyjde, radši se neodhlásí: neúspěšné
+                  // odhlášení je menší škoda než tiše zahozená práce.
+                  if (hasUnsavedProgress) {
+                    await _doAutoBackup();
+                    if (hasUnsavedProgress) {
+                      _appMessengerKey.currentState?.showSnackBar(
+                        const SnackBar(
+                          duration: Duration(seconds: 8),
+                          content: Text(
+                            'Nepodařilo se zálohovat na server, odhlášení zrušeno. '
+                            'Zkus to znovu s připojením, nebo si napřed ulož '
+                            'zálohu do souboru (Sdílet zálohu).',
+                          ),
+                        ),
+                      );
+                      return;
+                    }
+                  }
                   await prefs.remove(AuthService.kTokenKey);
                   await prefs.remove(AuthService.kEmailKey);
                   // Ponecháme 'last_logged_in_email' pro předvyplnění při příštím loginu.
@@ -1396,8 +1419,8 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF16213E),
         title: const Text('O aplikaci'),
-        content: const Text(
-          'LangCards v1.5.1\n\n'
+        content: Text(
+          'LangCards ${AuthService.klientVerze.isEmpty ? "" : "v${AuthService.klientVerze}"}\n\n'
           'Aplikace pro učení cizích jazyků pomocí kartiček.\n\n'
           'Autor: David Petrov',
           style: TextStyle(height: 1.5),
@@ -4214,11 +4237,32 @@ class AuthService {
   /// i na webove verzi a pri vyvoji.
   static Uri resetUrl() => _api('reset.php');
 
+  /// Platforma a verze klienta. Posilaji se v hlavickach kazdeho pozadavku
+  /// a server si je pamatuje (jen pri zmene), aby admin prehled rekl, kdo
+  /// jede na cem. Rozlisit APK od webu slo do 30. 8. 2026 jen rucne
+  /// z nginx logu podle User-Agenta, a jen ctrnact dni zpetne.
+  static final String klientPlatforma =
+      kIsWeb ? 'web' : defaultTargetPlatform.name;
+  static String klientVerze = '';
+
+  /// Verze se cte z buildu, ne z konstanty v kodu. Konstanta zastarava:
+  /// dialog "O aplikaci" hlasil v1.5.1 jeste ve verzi 1.5.13.
+  static Future<void> zjistiVerziKlienta() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      klientVerze = '${info.version}+${info.buildNumber}';
+    } catch (_) {
+      // Neni to podminka niceho, jen udaj navic.
+    }
+  }
+
   static Future<ApiResult> _request(String method, String endpoint, {Map<String, dynamic>? body, String? token}) async {
     final uri = _api(endpoint);
     final headers = <String, String>{
       'Content-Type': 'application/json',
       'Accept': 'application/json',
+      'X-App-Platform': klientPlatforma,
+      if (klientVerze.isNotEmpty) 'X-App-Version': klientVerze,
       if (token != null) 'Authorization': 'Bearer $token',
     };
     final http.Response res;
@@ -4792,6 +4836,40 @@ class _AdminScreenState extends State<AdminScreen> {
     return Colors.grey;
   }
 
+  /// S cim uzivatel naposledy prisel. Verze jina nez ta moje se zvyrazni:
+  /// prave to je odpoved na "kdo jeste nema opravu, ktera uz je venku".
+  ///
+  /// Pomlcka znamena, ze se od zavedeni tohohle udaje (30. 8. 2026) jeste
+  /// neozval - ne ze appku nepouziva. Offline pouziti se ze serveru poznat
+  /// neda vubec.
+  Widget _klient(Map<String, dynamic> u) {
+    final platforma = (u['last_platform'] ?? '').toString();
+    final verze = (u['last_app_version'] ?? '').toString();
+    if (platforma.isEmpty && verze.isEmpty) {
+      return const Text('-', style: TextStyle(color: Colors.grey));
+    }
+    final zastarala = verze.isNotEmpty &&
+        AuthService.klientVerze.isNotEmpty &&
+        verze != AuthService.klientVerze;
+    return Row(
+      children: [
+        Icon(
+          platforma == 'web' ? Icons.language : Icons.smartphone,
+          size: 14,
+          color: Colors.grey,
+        ),
+        const SizedBox(width: 6),
+        Text(
+          verze.isEmpty ? platforma : verze,
+          style: TextStyle(
+            color: zastarala ? Colors.orange : null,
+            fontWeight: zastarala ? FontWeight.bold : null,
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -4855,6 +4933,9 @@ class _AdminScreenState extends State<AdminScreen> {
                                 numeric: true,
                                 onSort: _onSort,
                               ),
+                              // Bez onSort schvalne: _onSort mapuje sloupce
+                              // podle indexu a radit podle klienta nepotrebujeme.
+                              const DataColumn(label: Text('Klient')),
                             ],
                             rows: users.map((u) {
                               final verified = u['verified'] == true;
@@ -4881,6 +4962,7 @@ class _AdminScreenState extends State<AdminScreen> {
                                 DataCell(Text(_formatDate(u['last_login_at'] as String?))),
                                 DataCell(Text(_formatDate(u['last_backup_at'] as String?))),
                                 DataCell(Text(_formatBytes(u['backup_size_bytes'] as int?))),
+                                DataCell(_klient(u)),
                               ]);
                             }).toList(),
                           ),

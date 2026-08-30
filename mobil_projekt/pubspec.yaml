@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.5.13+28
+version: 1.5.14+29
 
 environment:
   sdk: ^3.5.4
@@ -39,6 +39,8 @@ dependencies:
   http: ^1.2.2
   # Otevre stranku s obnovou hesla v prohlizeci (api/reset.php).
   url_launcher: ^6.3.1
+  # Skutecna verze buildu pro admin prehled - konstanta v kodu zastara.
+  package_info_plus: ^8.1.2
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
