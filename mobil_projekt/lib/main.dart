@@ -1423,7 +1423,7 @@ class _HomeScreenState extends State<HomeScreen> {
           'LangCards ${AuthService.klientVerze.isEmpty ? "" : "v${AuthService.klientVerze}"}\n\n'
           'Aplikace pro učení cizích jazyků pomocí kartiček.\n\n'
           'Autor: David Petrov',
-          style: TextStyle(height: 1.5),
+          style: const TextStyle(height: 1.5),
         ),
         actions: [
           TextButton(
@@ -3369,6 +3369,23 @@ class _AddCardScreenState extends State<AddCardScreen> {
     super.dispose();
   }
 
+  /// Jen písmena a číslice, malými. Slouží k porovnání vstupu s výsledkem.
+  static final RegExp _jenObsah = RegExp(r'[^\p{L}\p{N}]+', unicode: true);
+
+  String _porovnavaciKlic(String s) =>
+      s.toLowerCase().replaceAll(_jenObsah, '');
+
+  /// MyMemory není překladač, ale paměť překladů: vrací nejpodobnější záznam
+  /// z databáze lidských překladů. Občas je v ní položka, která přeložená
+  /// není, a vrátí se tedy vstup zpátky:
+  ///
+  ///   "table"            -> "table"               (match 1.00)
+  ///   "how tall are you" -> "= How tall are you?" (match 0.93)
+  ///
+  /// Skóre `match` se tím řídit nedá - horší z těch dvou má vyšší hodnotu.
+  /// Spolehlivý příznak je, že výsledek je po očištění tentýž text jako
+  /// vstup. Pak se vrátí null a políčko zůstane prázdné: prázdné je lepší
+  /// než anglický text vydávaný za český překlad.
   Future<String?> _translateText(String text, String from, String to) async {
     try {
       final uri = Uri.parse(
@@ -3377,7 +3394,12 @@ class _AddCardScreenState extends State<AddCardScreen> {
       final response = await http.get(uri);
       final data = json.decode(response.body);
       if (data['responseStatus'] == 200) {
+        // Vyčerpaný denní limit se vrací jako text překladu se stavem 200,
+        // takže bez tohohle by se uživateli do kartičky napsala hláška
+        // "MYMEMORY WARNING: YOU USED ALL AVAILABLE FREE TRANSLATIONS...".
+        if (data['quotaFinished'] == true) return null;
         String result = data['responseData']['translatedText'] as String;
+        if (result.toUpperCase().contains('MYMEMORY')) return null;
         result = result
             .replaceAll('&quot;', '')
             .replaceAll('&amp;', '&')
@@ -3385,10 +3407,18 @@ class _AddCardScreenState extends State<AddCardScreen> {
             .replaceAll('&gt;', '>')
             .replaceAll('&#39;', '')
             .trim();
+        // Artefakty z překladové paměti: značky <x id="3"/> a &#10; pochází
+        // z nástrojů, kterými se ty segmenty do databáze nahrály.
+        result = result.replaceAll(RegExp(r'<x[^>]*>'), '');
+        result = result.replaceAll('&#10;', ' ');
+        result = result.replaceAll(RegExp(r'^\s*=\s*'), '');
         // Remove any stray quotes/apostrophes at the very end or start
         result = result.replaceAll(RegExp(r'''["“”„‘’']$'''), '');
         result = result.replaceAll(RegExp(r'''^["“”„‘’']'''), '');
         result = result.trim();
+        if (result.isEmpty) return null;
+        // Nepřeložený záznam z paměti, viz komentář u funkce.
+        if (_porovnavaciKlic(result) == _porovnavaciKlic(text)) return null;
         return result;
       }
     } catch (_) {}
