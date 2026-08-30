@@ -9,6 +9,7 @@ import 'package:flutter_tts/flutter_tts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:http/http.dart' as http;
@@ -685,10 +686,19 @@ class _HomeScreenState extends State<HomeScreen> {
       if (_hasAnyLocalData() && mounted) {
         // Uživatel si mohl volbu zapamatovat („Příště se neptat").
         final remembered = prefs.getBool(kBackupConflictChoiceKey);
-        apply = remembered ?? (await _askBackupConflict() ?? true);
+        // Vychozi false: kdyz dialog skonci bez odpovedi (na Androidu staci
+        // systemove Zpet, barrierDismissible: false ho neblokuje), nesmi se
+        // sahnout na lokalni data. Ta ticha volba byla driv ta destruktivni.
+        apply = remembered ?? (await _askBackupConflict() ?? false);
       }
       if (apply) {
         await _applyRemoteBackup(widget.remoteBackup!);
+      } else {
+        // Dialog slibuje, ze se serverova zaloha prepise temito daty.
+        // Bez tohohle radku se to nestalo: upload spousti jen editace
+        // karticky nebo pokroku, takze slib platil az nekdy priste, nebo
+        // nikdy - a server zustal navzdycky stary.
+        _scheduleAutoBackup();
       }
       _remoteBackupApplied = true;
     }
@@ -1320,8 +1330,11 @@ class _HomeScreenState extends State<HomeScreen> {
                         prefs: prefs,
                         onLoggedIn: () {
                           // AuthGate stáhne zálohu ze serveru a předá ji HomeScreen.
+                          // poPrihlaseni: tohle je jediné místo, kde se má řešit
+                          // konflikt s lokálními daty.
                           nav.pushAndRemoveUntil(
-                            MaterialPageRoute(builder: (_) => const AuthGate()),
+                            MaterialPageRoute(
+                                builder: (_) => const AuthGate(poPrihlaseni: true)),
                             (_) => false,
                           );
                         },
@@ -4197,6 +4210,10 @@ class AuthService {
     return Uri.parse('${kBackendBase}api/$endpoint');
   }
 
+  /// Adresa stranky s obnovou hesla. Stejny zaklad jako API, aby to sedelo
+  /// i na webove verzi a pri vyvoji.
+  static Uri resetUrl() => _api('reset.php');
+
   static Future<ApiResult> _request(String method, String endpoint, {Map<String, dynamic>? body, String? token}) async {
     final uri = _api(endpoint);
     final headers = <String, String>{
@@ -4289,6 +4306,20 @@ class _LoginScreenState extends State<LoginScreen> {
     final lastEmail = widget.prefs.getString('last_logged_in_email') ?? '';
     if (lastEmail.isNotEmpty) {
       emailController.text = lastEmail;
+    }
+  }
+
+  /// Obnova hesla bezi na serveru jako stranka, ne v aplikaci.
+  ///
+  /// Diky tomu funguje i pro telefon se starsi verzi appky a hlavne to
+  /// znamena, ze se kvuli zapomenutemu heslu neceka na vydani na Play.
+  /// Do 30. 8. 2026 nesla obnova hesla vubec a kdo ho zapomnel, prisel
+  /// o ucet natrvalo.
+  Future<void> _otevritObnovuHesla() async {
+    final uri = AuthService.resetUrl();
+    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!ok && mounted) {
+      setState(() => error = 'Nepodařilo se otevřít prohlížeč. Adresa: $uri');
     }
   }
 
@@ -4485,6 +4516,13 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ],
                   ),
+                  TextButton(
+                    onPressed: isLoading ? null : _otevritObnovuHesla,
+                    child: const Text(
+                      'Zapomenuté heslo?',
+                      style: TextStyle(color: Color(0xFF00D9FF)),
+                    ),
+                  ),
                   if (isLoading) ...[
                     const SizedBox(height: 24),
                     const CircularProgressIndicator(),
@@ -4509,7 +4547,19 @@ class _LoginScreenState extends State<LoginScreen> {
 // ===== Auth Gate (decides login vs home) =====
 
 class AuthGate extends StatefulWidget {
-  const AuthGate({super.key});
+  /// Vzniklo tohle AuthGate hned po prihlaseni?
+  ///
+  /// Rozlisuje dva pripady, ktere kod jinak nema jak odlisit: AuthGate je
+  /// zaroven `home:` cele aplikace, takze `_check()` bezi i pri kazdem
+  /// obycejnem spusteni. Konflikt mezi lokalnimi daty a serverovou zalohou
+  /// ma smysl resit jen po skutecnem prihlaseni; pri beznem startu jsou
+  /// lokalni data data toho uctu a neni o cem se ptat.
+  ///
+  /// Bez tohohle priznaku vyskakoval dialog "Nalezena zaloha na serveru"
+  /// po kazdem spusteni aplikace.
+  final bool poPrihlaseni;
+
+  const AuthGate({super.key, this.poPrihlaseni = false});
 
   @override
   State<AuthGate> createState() => _AuthGateState();
@@ -4586,7 +4636,10 @@ class _AuthGateState extends State<AuthGate> {
       // Guest mode: aplikace funguje bez účtu, login je dostupný z nastavení.
       return const HomeScreen();
     }
-    return HomeScreen(remoteBackup: remoteBackup);
+    // Zaloha se stahuje vzdycky (pozna se tim vyprsela relace), ale do
+    // HomeScreen jde jen po prihlaseni - jinak by se resil konflikt,
+    // ktery zadny neni.
+    return HomeScreen(remoteBackup: widget.poPrihlaseni ? remoteBackup : null);
   }
 }
 
