@@ -498,6 +498,141 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  /// Kolik toho serverová záloha obsahuje: [pokrok, vlastní kartičky],
+  /// sečteno přes všechny jazyky. Slouží jen k popisu v dialogu.
+  List<int> _objemZalohy(Map<String, dynamic> backup) {
+    final inner = backup['data'] is Map
+        ? backup['data'] as Map<String, dynamic>
+        : backup;
+    int pokrok = 0, karticky = 0;
+    final languages = inner['languages'];
+    if (languages is Map) {
+      for (final v in languages.values) {
+        if (v is! Map) continue;
+        if (v['progress'] is Map) pokrok += (v['progress'] as Map).length;
+        if (v['myCards'] is List) karticky += (v['myCards'] as List).length;
+      }
+    }
+    return [pokrok, karticky];
+  }
+
+  /// Totéž pro data uložená v zařízení.
+  List<int> _objemLokalnich() {
+    int pokrok = 0, karticky = 0;
+    for (final lang in AppLanguage.values) {
+      if (lang == AppLanguage.cs) continue;
+      final lc = LanguageConfig(lang);
+      try {
+        final p = prefs.getString(lc.progressKey);
+        if (p != null && json.decode(p) is Map) {
+          pokrok += (json.decode(p) as Map).length;
+        }
+        final c = prefs.getString(lc.myCardsKey);
+        if (c != null && json.decode(c) is List) {
+          karticky += (json.decode(c) as List).length;
+        }
+      } catch (_) {
+        // Rozbitý JSON se počítat nedá; popis v dialogu kvůli tomu nemá spadnout.
+      }
+    }
+    return [pokrok, karticky];
+  }
+
+  String _popisObjemu(List<int> o) {
+    final pokrok = o[0] == 0 ? 'žádný pokrok' : '${o[0]} kartiček v pokroku';
+    final vlastni = o[1] == 0 ? 'žádné vlastní' : '${o[1]} vlastních';
+    return '$pokrok, $vlastni';
+  }
+
+  /// Kdy zálohu někdo nahrál.
+  ///
+  /// Bere se `date` z payloadu, ne `updated_at` ze serveru: `date` píše
+  /// zařízení svými hodinami, stejně jako `lastBackupDate` níž, takže se ta
+  /// dvě dají porovnat. `updated_at` je serverový čas v jiném pásmu i formátu.
+  DateTime? _datumZalohy(Map<String, dynamic> backup) {
+    final inner = backup['data'] is Map
+        ? backup['data'] as Map<String, dynamic>
+        : backup;
+    final d = inner['date'];
+    return d is String ? DateTime.tryParse(d) : null;
+  }
+
+  /// Kdy tohle zařízení naposledy samo něco nahrálo nebo uložilo do souboru.
+  DateTime? _datumPoslednihoNahrani() {
+    DateTime? nej;
+    for (final lang in AppLanguage.values) {
+      if (lang == AppLanguage.cs) continue;
+      final s = prefs.getString(LanguageConfig(lang).lastBackupDateKey);
+      if (s == null) continue;
+      final d = DateTime.tryParse(s);
+      if (d != null && (nej == null || d.isAfter(nej))) nej = d;
+    }
+    return nej;
+  }
+
+  String _kdy(DateTime? d) {
+    if (d == null) return 'neznámo kdy';
+    final l = d.toLocal();
+    String dva(int n) => n.toString().padLeft(2, '0');
+    return '${l.day}. ${l.month}. ${l.year} ${dva(l.hour)}:${dva(l.minute)}';
+  }
+
+  /// Sem se odloží lokální data, než je přepíše serverová záloha.
+  static const String kZachranaKlic = 'zachranaPredObnovou';
+
+  /// Pojistka před přepsáním: kdo v dialogu klikne špatně, má co vrátit.
+  Future<void> _odlozZachranu() async {
+    final Map<String, String> stav = {};
+    for (final lang in AppLanguage.values) {
+      if (lang == AppLanguage.cs) continue;
+      final lc = LanguageConfig(lang);
+      final p = prefs.getString(lc.progressKey);
+      final c = prefs.getString(lc.myCardsKey);
+      if (p != null) stav['${lc.code}|progress'] = p;
+      if (c != null) stav['${lc.code}|myCards'] = c;
+    }
+    if (stav.isEmpty) return;
+    await prefs.setString(kZachranaKlic, json.encode(stav));
+  }
+
+  Future<void> _vratZachranu() async {
+    final raw = prefs.getString(kZachranaKlic);
+    if (raw == null) return;
+    try {
+      final stav = json.decode(raw) as Map<String, dynamic>;
+      for (final e in stav.entries) {
+        final casti = e.key.split('|');
+        final lc = LanguageConfig.fromCode(casti[0]);
+        if (lc == null) continue;
+        await prefs.setString(
+          casti[1] == 'progress' ? lc.progressKey : lc.myCardsKey,
+          e.value as String,
+        );
+      }
+    } catch (_) {
+      return;
+    }
+    await prefs.remove(kZachranaKlic);
+    // Vrácená data jsou zase ta platná, takže patří i na server.
+    _scheduleAutoBackup();
+    if (mounted) await _loadAllData();
+  }
+
+  /// Přepsání lokálních dat je jediná nevratná věc, kterou appka udělá bez
+  /// dalšího potvrzení. Deset vteřin na rozmyšlenou stojí za to.
+  void _nabidniVraceni() {
+    _appMessengerKey.currentState?.showSnackBar(
+      SnackBar(
+        duration: const Duration(seconds: 12),
+        content: const Text('Data v zařízení nahrazena zálohou ze serveru.'),
+        action: SnackBarAction(
+          label: 'VRÁTIT ZPĚT',
+          onPressed: _vratZachranu,
+        ),
+      ),
+    );
+  }
+
   Future<void> _applyRemoteBackup(Map<String, dynamic> backup) async {
     // Backup format from server is {data: {...}, size_bytes, updated_at}
     final inner = backup['data'] is Map ? backup['data'] as Map<String, dynamic> : backup;
@@ -571,9 +706,36 @@ class _HomeScreenState extends State<HomeScreen> {
   /// false = vždy ponechat data v zařízení, null = pokaždé se zeptat).
   static const String kBackupConflictChoiceKey = 'backupConflictChoice';
 
+  /// Jeden řádek porovnání v dialogu.
+  Widget _radekPorovnani(String kde, String co, String kdy) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(kde,
+              style: const TextStyle(
+                  fontWeight: FontWeight.bold, color: Color(0xFF00D9FF))),
+          Text(co, style: const TextStyle(height: 1.3)),
+          Text(kdy,
+              style: const TextStyle(fontSize: 12, color: Colors.grey)),
+        ],
+      ),
+    );
+  }
+
   /// Dialog: lokální data vs. serverová záloha. true = stáhnout ze serveru.
   /// Zaškrtnutím „Příště se neptat" se volba uloží a dialog se už neukáže.
-  Future<bool?> _askBackupConflict() async {
+  ///
+  /// Vypisuje, co je na které straně. Bez těch čísel je to rozhodnutí
+  /// poslepu, a přitom obě strany jsou v tu chvíli po ruce; špatná odpověď
+  /// přitom znamená ztrátu práce.
+  Future<bool?> _askBackupConflict({
+    required String serverCo,
+    required String serverKdy,
+    required String zarizeniCo,
+    required String zarizeniKdy,
+  }) async {
     bool remember = false;
     final choice = await showDialog<bool>(
       context: context,
@@ -581,18 +743,23 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           backgroundColor: const Color(0xFF16213E),
-          title: const Text('Nalezena záloha na serveru'),
+          title: const Text('Která verze má platit?'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'V tomto zařízení už jsou uložená data (pokrok nebo kartičky) '
-                'a zároveň existuje záloha na serveru.\n\n'
-                'Kterou verzi chceš použít?\n\n'
-                'Pozn.: pokud ponecháš data v zařízení, serverová záloha se při '
-                'příští synchronizaci přepíše těmito daty.',
+                'V zařízení jsou uložená data a na serveru je záloha. '
+                'Liší se:',
                 style: TextStyle(height: 1.4),
+              ),
+              const SizedBox(height: 12),
+              _radekPorovnani('Na serveru', serverCo, serverKdy),
+              _radekPorovnani('V zařízení', zarizeniCo, zarizeniKdy),
+              const Text(
+                'Pokud ponecháš data v zařízení, serverová záloha se jimi '
+                'přepíše. Opačná volba jde vzít zpět.',
+                style: TextStyle(fontSize: 12, height: 1.4, color: Colors.grey),
               ),
               const SizedBox(height: 8),
               InkWell(
@@ -687,15 +854,47 @@ class _HomeScreenState extends State<HomeScreen> {
       // Bez dotazu by je serverová záloha tiše přepsala.
       bool apply = true;
       if (_hasAnyLocalData() && mounted) {
-        // Uživatel si mohl volbu zapamatovat („Příště se neptat").
-        final remembered = prefs.getBool(kBackupConflictChoiceKey);
-        // Vychozi false: kdyz dialog skonci bez odpovedi (na Androidu staci
-        // systemove Zpet, barrierDismissible: false ho neblokuje), nesmi se
-        // sahnout na lokalni data. Ta ticha volba byla driv ta destruktivni.
-        apply = remembered ?? (await _askBackupConflict() ?? false);
+        final serverDatum = _datumZalohy(widget.remoteBackup!);
+        final mojePosledni = _datumPoslednihoNahrani();
+
+        // Záloha, která NENÍ novější než moje poslední nahrání, je moje
+        // vlastní starší kopie - nemá v sobě nic, co by tady nebylo. Ptát se
+        // na ni je otázka bez obsahu a špatná odpověď znamená ztrátu práce.
+        //
+        // Přesně v tomhle stavu je telefon, kterému vypršela relace: server
+        // drží poslední úspěšnou synchronizaci a v zařízení jsou měsíce práce
+        // navíc. Ptát se tam bylo to nejhorší možné.
+        //
+        // Ptá se tedy jen tehdy, když je serverová záloha novější, tedy když
+        // mezitím nahrálo jiné zařízení. To je jediný skutečný konflikt.
+        final serverNeniNovejsi = serverDatum != null &&
+            mojePosledni != null &&
+            !serverDatum.isAfter(mojePosledni);
+
+        if (serverNeniNovejsi) {
+          apply = false;
+        } else {
+          // Uživatel si mohl volbu zapamatovat („Příště se neptat").
+          final remembered = prefs.getBool(kBackupConflictChoiceKey);
+          // Vychozi false: kdyz dialog skonci bez odpovedi (na Androidu staci
+          // systemove Zpet, barrierDismissible: false ho neblokuje), nesmi se
+          // sahnout na lokalni data. Ta ticha volba byla driv ta destruktivni.
+          apply = remembered ??
+              (await _askBackupConflict(
+                    serverCo: _popisObjemu(_objemZalohy(widget.remoteBackup!)),
+                    serverKdy: _kdy(serverDatum),
+                    zarizeniCo: _popisObjemu(_objemLokalnich()),
+                    zarizeniKdy: _kdy(mojePosledni),
+                  ) ??
+                  false);
+        }
       }
       if (apply) {
+        // Odložit stranou dřív, než se to přepíše - viz nabídka Vrátit zpět.
+        await _odlozZachranu();
+        final bylaLokalni = _hasAnyLocalData();
         await _applyRemoteBackup(widget.remoteBackup!);
+        if (bylaLokalni) _nabidniVraceni();
       } else {
         // Dialog slibuje, ze se serverova zaloha prepise temito daty.
         // Bez tohohle radku se to nestalo: upload spousti jen editace
@@ -871,9 +1070,13 @@ class _HomeScreenState extends State<HomeScreen> {
           };
         }
       }
+      // Totéž datum jde do payloadu i do lastBackupDate. Musí sedět na
+      // sekundu: podle jejich porovnání se pozná, jestli serverová záloha
+      // obsahuje něco navíc, nebo je to jen naše vlastní starší kopie.
+      final kdyNahrano = DateTime.now();
       final payload = {
         'version': '3.0',
-        'date': DateTime.now().toIso8601String(),
+        'date': kdyNahrano.toIso8601String(),
         'languages': allLangs,
       };
       final res = await AuthService.uploadBackup(token, payload);
@@ -888,7 +1091,7 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         }
       } else if (res.statusCode == 200) {
-        lastBackupDate = DateTime.now();
+        lastBackupDate = kdyNahrano;
         hasUnsavedProgress = false;
         for (final lang in AppLanguage.values) {
           if (lang == AppLanguage.cs) continue;
