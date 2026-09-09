@@ -72,6 +72,7 @@ class LanguageConfig {
   String get lastBackupProgressCountKey => '${code}_lastBackupProgressCount';
   String get lastBackupCardsCountKey => '${code}_lastBackupCardsCount';
   String get hasUnsavedProgressKey => '${code}_hasUnsavedProgress';
+  String get studyTimeKey => '${code}_studyTime';
 
   String directionLabel(bool isForeignToCz) {
     if (language == AppLanguage.cs) {
@@ -85,6 +86,98 @@ class LanguageConfig {
       if (lang.name == code) return LanguageConfig(lang);
     }
     return null;
+  }
+}
+
+/// Kolik času se strávilo učením, po dnech a po jazycích.
+///
+/// ⛔ NEMĚŘÍ se stopkami od otevření obrazovky po její zavření. Telefon
+/// odložený na stole nebo aplikace nechaná na pozadí by z půlminutového
+/// učení udělaly osm hodin, a takové číslo je horší než žádné: vypadá
+/// věrohodně a z grafu nejde poznat, že lže.
+///
+/// Počítá se proto po ÚSECÍCH MEZI ČINNOSTMI a každý úsek má strop. Kdo se
+/// dívá na kartu půl minuty, dostane půl minuty; kdo odloží telefon na
+/// hodinu, dostane [stropMezery]. Není k tomu potřeba žádný časovač, takže
+/// to nic nestojí na baterii a není co zapomenout vypnout.
+class StudyTime {
+  /// Nejdelší mezera mezi dvěma činnostmi, která se ještě počítá celá.
+  ///
+  /// Dvě minuty jsou schválně velkorysé: přemýšlet nad kartou déle než
+  /// minutu je normální, kdežto při delší pauze už člověk dělá něco jiného.
+  /// Chybuje se tím směrem „radši nezapočítat", protože nadsazená statistika
+  /// učení je k ničemu.
+  static const Duration stropMezery = Duration(minutes: 2);
+
+  /// Kolik dní se drží. Rok s rezervou stačí na „kolik jsem toho nadělal
+  /// loni v září" a mapa zůstane malá i v záloze.
+  static const int _dniHistorie = 400;
+
+  static String klicDne(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  /// Kolik z uplynulé mezery se smí započítat.
+  static Duration zapocitatelna(Duration mezera) =>
+      mezera > stropMezery ? stropMezery : mezera;
+
+  static Map<String, int> nactiZ(SharedPreferences prefs, LanguageConfig lc) {
+    final raw = prefs.getString(lc.studyTimeKey);
+    if (raw == null || raw.isEmpty) return {};
+    try {
+      final m = json.decode(raw);
+      if (m is! Map) return {};
+      return m.map((key, v) => MapEntry('$key', (v as num).toInt()));
+    } catch (_) {
+      // Rozbitý záznam nesmí shodit učení. Statistika je přídavek k aplikaci,
+      // ne data, kvůli kterým aplikace existuje.
+      return {};
+    }
+  }
+
+  static Future<void> ulozDo(
+      SharedPreferences prefs, LanguageConfig lc, Map<String, int> dny) async {
+    // Ořezává se až při ukládání, ne při čtení: obnovená záloha může přinést
+    // starší dny a ty se mají ukázat, dokud je někdo nepřepíše novým zápisem.
+    if (dny.length > _dniHistorie) {
+      final klice = dny.keys.toList()..sort();
+      for (final stary in klice.take(dny.length - _dniHistorie)) {
+        dny.remove(stary);
+      }
+    }
+    await prefs.setString(lc.studyTimeKey, json.encode(dny));
+  }
+
+  /// Připíše čas k dnešku. Instanci [SharedPreferences] si bere sama, protože
+  /// učicí obrazovka ji nemá - drží ji HomeScreen.
+  static Future<void> pripis(LanguageConfig lc, Duration kolik) async {
+    if (kolik <= Duration.zero) return;
+    final prefs = await SharedPreferences.getInstance();
+    final dny = nactiZ(prefs, lc);
+    final dnes = klicDne(DateTime.now());
+    dny[dnes] = (dny[dnes] ?? 0) + kolik.inSeconds;
+    await ulozDo(prefs, lc, dny);
+  }
+
+  /// Sloučení pro obnovu ze zálohy: bere se VYŠŠÍ hodnota, ne ta ze zálohy.
+  ///
+  /// Čas jen roste, takže maximum je správné sloučení a nezáleží na pořadí.
+  /// Kdyby se přepisovalo, obnova starší zálohy by smazala dnešek - a to je
+  /// přesně ten druh tiché ztráty, kterou tahle aplikace jinde řeší.
+  static Map<String, int> slouc(Map<String, int> a, Map<String, int> b) {
+    final ven = Map<String, int>.from(a);
+    b.forEach((den, sekundy) {
+      if (sekundy > (ven[den] ?? 0)) ven[den] = sekundy;
+    });
+    return ven;
+  }
+
+  /// „12 min", „1 h 05 min", „45 s".
+  static String popis(int sekundy) {
+    if (sekundy <= 0) return '0 min';
+    if (sekundy < 60) return '$sekundy s';
+    final minuty = sekundy ~/ 60;
+    if (minuty < 60) return '$minuty min';
+    return '${minuty ~/ 60} h ${(minuty % 60).toString().padLeft(2, '0')} min';
   }
 }
 
@@ -648,8 +741,19 @@ class _HomeScreenState extends State<HomeScreen> {
         if (langData['myCards'] != null) {
           await prefs.setString(lc.myCardsKey, json.encode(langData['myCards']));
         }
+        await _obnovCas(lc, langData['time']);
       }
     }
+  }
+
+  /// Sloučí čas ze zálohy s tím, co je v zařízení. Podrobně viz
+  /// [StudyTime.slouc]: bere se vyšší hodnota, takže obnova starší zálohy
+  /// nemůže smazat dnešek.
+  Future<void> _obnovCas(LanguageConfig lc, dynamic ze) async {
+    if (ze is! Map) return;
+    final zeZalohy = ze.map((key, v) => MapEntry('$key', (v as num).toInt()));
+    await StudyTime.ulozDo(
+        prefs, lc, StudyTime.slouc(StudyTime.nactiZ(prefs, lc), zeZalohy));
   }
 
   /// Globální „David Petrov" karty: server (živé updaty od admina) → lokální
@@ -1067,6 +1171,9 @@ class _HomeScreenState extends State<HomeScreen> {
           allLangs[lc.code] = {
             'progress': progJson != null ? json.decode(progJson) : {},
             'myCards': cardsJson != null ? json.decode(cardsJson) : [],
+              // Bez tohohle by odhlášení statistiku času smazalo:
+              // maže VŠECHNA lokální data a co není v záloze, je pryč.
+              'time': StudyTime.nactiZ(prefs, lc),
           };
         }
       }
@@ -1241,6 +1348,9 @@ class _HomeScreenState extends State<HomeScreen> {
         allLangs[lc.code] = {
           'progress': progJson != null ? json.decode(progJson) : {},
           'myCards': cardsJson != null ? json.decode(cardsJson) : [],
+            // Bez tohohle by odhlášení statistiku času smazalo:
+            // maže VŠECHNA lokální data a co není v záloze, je pryč.
+            'time': StudyTime.nactiZ(prefs, lc),
         };
       }
     }
@@ -1356,6 +1466,8 @@ class _HomeScreenState extends State<HomeScreen> {
           if (langData['progress'] != null) {
             await prefs.setString(lc.progressKey, json.encode(langData['progress']));
           }
+
+          await _obnovCas(lc, langData['time']);
 
           // Save cards for this language
           if (langData['myCards'] != null) {
@@ -1590,6 +1702,20 @@ class _HomeScreenState extends State<HomeScreen> {
               },
             ),
             const Divider(color: Colors.grey),
+            ListTile(
+              leading: const Icon(Icons.bar_chart, color: Color(0xFF00D9FF)),
+              title: const Text('Statistika času'),
+              subtitle: Text('Kolik minut denně, ${langConfig.label}'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => StudyStatsScreen(langConfig: langConfig),
+                  ),
+                );
+              },
+            ),
             ListTile(
               leading: const Icon(Icons.info_outline, color: Colors.grey),
               title: const Text('O aplikaci'),
@@ -2663,7 +2789,12 @@ class LearningScreen extends StatefulWidget {
   State<LearningScreen> createState() => _LearningScreenState();
 }
 
-class _LearningScreenState extends State<LearningScreen> {
+class _LearningScreenState extends State<LearningScreen>
+    with WidgetsBindingObserver {
+  /// Kdy naposledy člověk něco udělal. Od toho se odvíjí započítaný čas,
+  /// viz [StudyTime].
+  DateTime _posledniAktivita = DateTime.now();
+
   FlashCard? currentCard;
   bool showTranslation = false;
   late bool isEnToCz = widget.initialIsEnToCz;
@@ -2680,6 +2811,8 @@ class _LearningScreenState extends State<LearningScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _posledniAktivita = DateTime.now();
     flutterTts = FlutterTts();
     _initTts();
     _lastCheckDate = DateTime.now().toIso8601String().split('T')[0];
@@ -2688,9 +2821,36 @@ class _LearningScreenState extends State<LearningScreen> {
 
   @override
   void dispose() {
+    // Poslední úsek se musí započítat tady. Bez toho by propadl čas nad
+    // kartou, po které se rovnou odešlo z obrazovky.
+    _zapocitejCas();
+    WidgetsBinding.instance.removeObserver(this);
     _keyboardFocus.dispose();
     flutterTts.stop();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Čas strávený mimo aplikaci se nepočítá VŮBEC, ani stropem: hodiny se
+      // posunou až na návrat. Jinak by každé přepnutí do jiné aplikace
+      // přidalo dvě minuty, které nikdo neučil.
+      _posledniAktivita = DateTime.now();
+    } else {
+      _zapocitejCas();
+    }
+  }
+
+  /// Uzavře úsek od poslední činnosti a připíše z něj, co se smí.
+  void _zapocitejCas() {
+    final ted = DateTime.now();
+    final mezera = ted.difference(_posledniAktivita);
+    _posledniAktivita = ted;
+    // Bez await schválně: zápis je drobný a čekat na něj by zdrželo
+    // překreslení karty. Ztratit se nemá co, SharedPreferences si hodnotu
+    // drží v paměti hned.
+    StudyTime.pripis(widget.langConfig, StudyTime.zapocitatelna(mezera));
   }
 
   void _commitRating(int rating) {
@@ -3095,6 +3255,9 @@ class _LearningScreenState extends State<LearningScreen> {
 
   void _rate(int rating) {
     if (currentCard == null) return;
+    // Ohodnocení karty je ta nejspolehlivější známka toho, že se člověk
+    // opravdu učí, takže se od ní odvíjí měření času.
+    _zapocitejCas();
 
     final prog = _getCardProgress(currentCard!);
     final today = DateTime.now().toIso8601String().split('T')[0];
@@ -4556,6 +4719,215 @@ class AuthService {
 }
 
 // ===== Login Screen =====
+
+/// Kolik minut denně nad jazykem, a graf posledních dnů.
+///
+/// Data sbírá [StudyTime] z učicí obrazovky. Počítá se JEN opakování karet,
+/// ne procházení přehledu nebo přidávání - tam se člověk jazyku nevěnuje,
+/// jen s aplikací zachází, a smíchat obojí by z čísla udělalo měřítko toho,
+/// jak dlouho byla appka otevřená.
+class StudyStatsScreen extends StatefulWidget {
+  final LanguageConfig langConfig;
+
+  const StudyStatsScreen({super.key, required this.langConfig});
+
+  @override
+  State<StudyStatsScreen> createState() => _StudyStatsScreenState();
+}
+
+class _StudyStatsScreenState extends State<StudyStatsScreen> {
+  Map<String, int> _dny = {};
+  bool _nacteno = false;
+  int _oknoDni = 14;
+
+  @override
+  void initState() {
+    super.initState();
+    _nacti();
+  }
+
+  Future<void> _nacti() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _dny = StudyTime.nactiZ(prefs, widget.langConfig);
+      _nacteno = true;
+    });
+  }
+
+  /// Posledních [_oknoDni] dní včetně dneška, i těch prázdných.
+  ///
+  /// Prázdné dny tam patří: graf bez nich by tvářil, že se učilo každý den,
+  /// jen někdy míň. Díra v řadě je ta informace, kvůli které se na statistiku
+  /// člověk dívá.
+  List<MapEntry<DateTime, int>> _rada() {
+    final dnes = DateTime.now();
+    return List.generate(_oknoDni, (i) {
+      final den = DateTime(dnes.year, dnes.month, dnes.day)
+          .subtract(Duration(days: _oknoDni - 1 - i));
+      return MapEntry(den, _dny[StudyTime.klicDne(den)] ?? 0);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final rada = _rada();
+    final vOkne = rada.fold<int>(0, (a, e) => a + e.value);
+    final aktivnich = rada.where((e) => e.value > 0).length;
+    final dnes = rada.isEmpty ? 0 : rada.last.value;
+    final vrchol = rada.fold<int>(0, (a, e) => e.value > a ? e.value : a);
+    final celkem = _dny.values.fold<int>(0, (a, v) => a + v);
+
+    return Scaffold(
+      backgroundColor: const Color(0xFF1A1A2E),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF16213E),
+        title: Text('Čas učení - ${widget.langConfig.label}'),
+      ),
+      body: !_nacteno
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Column(
+                      children: [
+                        const Text('Dnes',
+                            style: TextStyle(color: Colors.grey, fontSize: 14)),
+                        Text(
+                          StudyTime.popis(dnes),
+                          style: const TextStyle(
+                            color: Color(0xFF00D9FF),
+                            fontSize: 40,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      _dlazdice('Za $_oknoDni dní', StudyTime.popis(vOkne)),
+                      _dlazdice(
+                        'Průměr na den',
+                        // Průměruje se přes DNY S UČENÍM, ne přes celé okno.
+                        // Jinak číslo klesá i ve dnech, kdy se člověk učil
+                        // stejně, jen si den vynechal - a to není průměr
+                        // učení, to je průměr kalendáře.
+                        aktivnich == 0
+                            ? '-'
+                            : StudyTime.popis(vOkne ~/ aktivnich),
+                      ),
+                      _dlazdice('Nejvíc', StudyTime.popis(vrchol)),
+                    ],
+                  ),
+                  const SizedBox(height: 28),
+                  _graf(rada, vrchol),
+                  const SizedBox(height: 16),
+                  Center(
+                    child: ToggleButtons(
+                      isSelected: [_oknoDni == 7, _oknoDni == 14, _oknoDni == 30],
+                      onPressed: (i) =>
+                          setState(() => _oknoDni = [7, 14, 30][i]),
+                      borderRadius: BorderRadius.circular(8),
+                      selectedColor: Colors.black,
+                      fillColor: const Color(0xFF00D9FF),
+                      color: Colors.grey,
+                      constraints:
+                          const BoxConstraints(minWidth: 64, minHeight: 34),
+                      children: const [
+                        Text('7 dní'),
+                        Text('14 dní'),
+                        Text('30 dní'),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    _spodniPoznamka(celkem),
+                    style: TextStyle(
+                        color: Colors.grey[500], fontSize: 12, height: 1.4),
+                  ),
+                ],
+              ),
+            ),
+    );
+  }
+
+  /// Vysvětlení, co to číslo je. Bez něj vypadá prázdný graf jako porucha
+  /// a započítaný čas jako doba, po kterou byla aplikace otevřená.
+  String _spodniPoznamka(int celkem) {
+    final klice = _dny.keys.toList()..sort();
+    final odkdy = klice.isEmpty ? null : klice.first;
+    return [
+      if (odkdy != null) 'Měří se od $odkdy, celkem ${StudyTime.popis(celkem)}.',
+      if (odkdy == null) 'Zatím není co ukázat - měření začíná prvním opakováním karet.',
+      'Počítá se jen opakování karet, ne procházení přehledu.',
+      'Pauza delší než ${StudyTime.stropMezery.inMinutes} min se započítá jen '
+          'z části a čas mimo aplikaci vůbec, takže odložený telefon '
+          'statistiku nenafoukne.',
+    ].join(' ');
+  }
+
+  Widget _dlazdice(String popisek, String hodnota) {
+    return Column(
+      children: [
+        Text(hodnota,
+            style: const TextStyle(
+                color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 2),
+        Text(popisek, style: TextStyle(color: Colors.grey[500], fontSize: 11)),
+      ],
+    );
+  }
+
+  Widget _graf(List<MapEntry<DateTime, int>> rada, int vrchol) {
+    const vyskaGrafu = 140.0;
+    return SizedBox(
+      height: vyskaGrafu + 22,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: rada.map((e) {
+          // Nenulový den musí být vidět i když je proti vrcholu drobný,
+          // jinak by se v grafu tvářil jako den bez učení.
+          final podil = vrchol == 0 ? 0.0 : e.value / vrchol;
+          final vyska = e.value == 0 ? 2.0 : (podil * vyskaGrafu).clamp(4.0, vyskaGrafu);
+          final dnesni = rada.last.key == e.key;
+          return Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 1.5),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Container(
+                    height: vyska,
+                    decoration: BoxDecoration(
+                      color: e.value == 0
+                          ? Colors.grey[800]
+                          : (dnesni ? const Color(0xFF00D9FF) : const Color(0xFF0077B6)),
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${e.key.day}',
+                    style: TextStyle(
+                        color: dnesni ? const Color(0xFF00D9FF) : Colors.grey[600],
+                        fontSize: 9),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+}
 
 class LoginScreen extends StatefulWidget {
   final SharedPreferences prefs;
