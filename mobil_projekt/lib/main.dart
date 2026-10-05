@@ -4135,6 +4135,29 @@ class _CardsOverviewScreenState extends State<CardsOverviewScreen> {
   final _searchController = TextEditingController();
   bool _searchActive = false;
 
+  /// Šachovnice místo seznamu: každá karta jen barevný čtvereček, aby bylo
+  /// vidět celé učení najednou. Do 18. 5. 2026 byl přehled jen takhle (pevně
+  /// 8 sloupců), pak ho nahradil seznam; od 1.5.18 je to přepínač a volba
+  /// se pamatuje. Čtverečky mají pevnou velikost místo počtu sloupců, jinak
+  /// by na širokém monitoru vyšly přes celou obrazovku a nadhled by zmizel.
+  static const _sachovniceKey = 'prehled_sachovnice';
+  bool _sachovnice = false;
+
+  @override
+  void initState() {
+    super.initState();
+    SharedPreferences.getInstance().then((prefs) {
+      final v = prefs.getBool(_sachovniceKey) ?? false;
+      if (mounted && v != _sachovnice) setState(() => _sachovnice = v);
+    });
+  }
+
+  Future<void> _prepniSachovnici() async {
+    setState(() => _sachovnice = !_sachovnice);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_sachovniceKey, _sachovnice);
+  }
+
   @override
   void dispose() {
     _searchController.dispose();
@@ -4253,8 +4276,9 @@ class _CardsOverviewScreenState extends State<CardsOverviewScreen> {
     );
   }
 
-  Widget _buildLegendItem(Color color, String label) {
+  Widget _buildLegendItem(Color color, String label, int count) {
     return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
         Container(
           width: 12,
@@ -4266,12 +4290,53 @@ class _CardsOverviewScreenState extends State<CardsOverviewScreen> {
         ),
         const SizedBox(width: 4),
         Text(label, style: const TextStyle(fontSize: 10)),
+        const SizedBox(width: 4),
+        Text('$count',
+            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
       ],
+    );
+  }
+
+  Widget _buildSachovnice(List<FlashCard> visible) {
+    return GridView.builder(
+      padding: EdgeInsets.fromLTRB(
+          8, 4, 8, 4 + MediaQuery.of(context).padding.bottom),
+      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: 26,
+        crossAxisSpacing: 3,
+        mainAxisSpacing: 3,
+      ),
+      itemCount: visible.length,
+      itemBuilder: (context, index) {
+        final card = visible[index];
+        return Tooltip(
+          message: '${card.en}\n${card.cz}',
+          waitDuration: const Duration(milliseconds: 300),
+          child: GestureDetector(
+            onTap: () => _showCardDetail(context, card),
+            child: Container(
+              decoration: BoxDecoration(
+                color: getCardColor(card),
+                borderRadius: BorderRadius.circular(3),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final visible = _filteredCards;
+    final pocty = <Color, int>{};
+    for (final c in visible) {
+      final barva = getCardColor(c);
+      pocty[barva] = (pocty[barva] ?? 0) + 1;
+    }
+    Widget legenda(Color barva, String nazev) =>
+        _buildLegendItem(barva, nazev, pocty[barva] ?? 0);
+
     return Scaffold(
       backgroundColor: const Color(0xFF1A1A2E),
       appBar: AppBar(
@@ -4290,6 +4355,12 @@ class _CardsOverviewScreenState extends State<CardsOverviewScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
+          IconButton(
+            icon: Icon(_sachovnice ? Icons.view_list : Icons.grid_view,
+                color: const Color(0xFF00D9FF)),
+            tooltip: _sachovnice ? 'Seznam' : 'Šachovnice',
+            onPressed: _prepniSachovnici,
+          ),
           IconButton(
             icon: Icon(_searchActive ? Icons.close : Icons.search,
                 color: const Color(0xFF00D9FF)),
@@ -4310,11 +4381,11 @@ class _CardsOverviewScreenState extends State<CardsOverviewScreen> {
               runSpacing: 6,
               alignment: WrapAlignment.center,
               children: [
-                _buildLegendItem(Colors.grey[700]!, 'Nová'),
-                _buildLegendItem(const Color(0xFFE74C3C), 'Těžká'),
-                _buildLegendItem(const Color(0xFFF39C12), 'Učí se'),
-                _buildLegendItem(const Color(0xFF27AE60), 'Dobrá'),
-                _buildLegendItem(const Color(0xFF3498DB), 'Naučená'),
+                legenda(Colors.grey[700]!, 'Nová'),
+                legenda(const Color(0xFFE74C3C), 'Těžká'),
+                legenda(const Color(0xFFF39C12), 'Učí se'),
+                legenda(const Color(0xFF27AE60), 'Dobrá'),
+                legenda(const Color(0xFF3498DB), 'Naučená'),
               ],
             ),
           ),
@@ -4322,19 +4393,19 @@ class _CardsOverviewScreenState extends State<CardsOverviewScreen> {
             Padding(
               padding: const EdgeInsets.only(bottom: 4),
               child: Text(
-                'Nalezeno: ${_filteredCards.length} z ${cards.length}',
+                'Nalezeno: ${visible.length} z ${cards.length}',
                 style: TextStyle(color: Colors.grey[500], fontSize: 12),
               ),
             ),
           Expanded(
-            child: ListView.builder(
+            child: _sachovnice ? _buildSachovnice(visible) : ListView.builder(
               // Bottom padding navíc, ať poslední karta není schovaná za
               // systémovou navigační lištou telefonu.
               padding: EdgeInsets.fromLTRB(
                   8, 4, 8, 4 + MediaQuery.of(context).padding.bottom),
-              itemCount: _filteredCards.length,
+              itemCount: visible.length,
               itemBuilder: (context, index) {
-                final card = _filteredCards[index];
+                final card = visible[index];
                 final color = getCardColor(card);
                 return GestureDetector(
                   onTap: () => _showCardDetail(context, card),
