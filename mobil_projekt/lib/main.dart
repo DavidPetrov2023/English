@@ -509,6 +509,56 @@ class GrammarCategory {
   }
 }
 
+/// Stupeň znalosti karty: 0 nová, 1 těžká, 2 učí se, 3 dobrá, 4 naučená.
+/// Jediné místo, odkud berou barvu učení, Přehled kartiček i Šachovnice
+/// znalostí, aby se nemohly rozejít.
+int stupenKarty(CardProgress p) {
+  if (p.repetitions == 0) return 0;
+  if (p.interval <= 1) return 1;
+  if (p.interval <= 6) return 2;
+  if (p.interval <= 21) return 3;
+  return 4;
+}
+
+const stupneBarvy = <Color>[
+  Color(0xFF616161), // Colors.grey[700]
+  Color(0xFFE74C3C),
+  Color(0xFFF39C12),
+  Color(0xFF27AE60),
+  Color(0xFF3498DB),
+];
+const stupneNazvy = <String>['Nová', 'Těžká', 'Učí se', 'Dobrá', 'Naučená'];
+
+/// Legenda barev s počtem karet v každém stupni (pocty má pět položek).
+Widget legendaZnalosti(List<int> pocty) {
+  return Wrap(
+    spacing: 12,
+    runSpacing: 6,
+    alignment: WrapAlignment.center,
+    children: [
+      for (var i = 0; i < stupneBarvy.length; i++)
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 12,
+              height: 12,
+              decoration: BoxDecoration(
+                color: stupneBarvy[i],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(width: 4),
+            Text(stupneNazvy[i], style: const TextStyle(fontSize: 10)),
+            const SizedBox(width: 4),
+            Text('${pocty[i]}',
+                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+          ],
+        ),
+    ],
+  );
+}
+
 // Home Screen
 class HomeScreen extends StatefulWidget {
   final Map<String, dynamic>? remoteBackup;
@@ -2012,6 +2062,11 @@ class _HomeScreenState extends State<HomeScreen> {
         elevation: 0,
         centerTitle: true,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.grid_view),
+            tooltip: 'Šachovnice znalostí',
+            onPressed: _openSachovnice,
+          ),
           BackupStatusIcon(onPressed: _shareBackup),
           // Language picker
           IconButton(
@@ -2112,6 +2167,33 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  /// Všechno z hlavní stránky najednou: vlastní karty, úrovně gramatiky
+  /// a David Petrov kartičky, každé jako blok čtverečků. Němčina s úsměvem
+  /// tu není, její lekce se načítají až po odemčení heslem.
+  void _openSachovnice() {
+    final bloky = <SachovniceBlok>[
+      if (myCards.isNotEmpty) SachovniceBlok(title: '📚 $myCardsName', cards: myCards),
+      for (final level in grammarLevels)
+        SachovniceBlok(
+          badge: level.level,
+          badgeColor: level.color,
+          title: level.name,
+          cards: level.categories.expand((c) => c.cards).toList(),
+        ),
+      if (langConfig.language == AppLanguage.en && davidCards.isNotEmpty)
+        SachovniceBlok(title: '✨ David Petrov kartičky', cards: davidCards),
+    ];
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => SachovniceScreen(
+          bloky: bloky,
+          getCardProgress: _getCardProgress,
         ),
       ),
     );
@@ -3305,20 +3387,8 @@ class _LearningScreenState extends State<LearningScreen>
     });
   }
 
-  Color _getCardColor(FlashCard card) {
-    final prog = _getCardProgress(card);
-    if (prog.repetitions == 0) {
-      return Colors.grey[700]!;
-    } else if (prog.interval <= 1) {
-      return const Color(0xFFE74C3C);
-    } else if (prog.interval <= 6) {
-      return const Color(0xFFF39C12);
-    } else if (prog.interval <= 21) {
-      return const Color(0xFF27AE60);
-    } else {
-      return const Color(0xFF3498DB);
-    }
-  }
+  Color _getCardColor(FlashCard card) =>
+      stupneBarvy[stupenKarty(_getCardProgress(card))];
 
   void _showCardsOverview() {
     Navigator.push(
@@ -4276,27 +4346,6 @@ class _CardsOverviewScreenState extends State<CardsOverviewScreen> {
     );
   }
 
-  Widget _buildLegendItem(Color color, String label, int count) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 12,
-          height: 12,
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(2),
-          ),
-        ),
-        const SizedBox(width: 4),
-        Text(label, style: const TextStyle(fontSize: 10)),
-        const SizedBox(width: 4),
-        Text('$count',
-            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-      ],
-    );
-  }
-
   Widget _buildSachovnice(List<FlashCard> visible) {
     return GridView.builder(
       padding: EdgeInsets.fromLTRB(
@@ -4329,13 +4378,10 @@ class _CardsOverviewScreenState extends State<CardsOverviewScreen> {
   @override
   Widget build(BuildContext context) {
     final visible = _filteredCards;
-    final pocty = <Color, int>{};
+    final pocty = List.filled(stupneBarvy.length, 0);
     for (final c in visible) {
-      final barva = getCardColor(c);
-      pocty[barva] = (pocty[barva] ?? 0) + 1;
+      pocty[stupenKarty(getCardProgress(c))]++;
     }
-    Widget legenda(Color barva, String nazev) =>
-        _buildLegendItem(barva, nazev, pocty[barva] ?? 0);
 
     return Scaffold(
       backgroundColor: const Color(0xFF1A1A2E),
@@ -4376,18 +4422,7 @@ class _CardsOverviewScreenState extends State<CardsOverviewScreen> {
         children: [
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Wrap(
-              spacing: 12,
-              runSpacing: 6,
-              alignment: WrapAlignment.center,
-              children: [
-                legenda(Colors.grey[700]!, 'Nová'),
-                legenda(const Color(0xFFE74C3C), 'Těžká'),
-                legenda(const Color(0xFFF39C12), 'Učí se'),
-                legenda(const Color(0xFF27AE60), 'Dobrá'),
-                legenda(const Color(0xFF3498DB), 'Naučená'),
-              ],
-            ),
+            child: legendaZnalosti(pocty),
           ),
           if (_searchActive)
             Padding(
@@ -4448,6 +4483,164 @@ class _CardsOverviewScreenState extends State<CardsOverviewScreen> {
                 );
               },
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class SachovniceBlok {
+  final String title;
+  final String? badge;
+  final Color? badgeColor;
+  final List<FlashCard> cards;
+  SachovniceBlok({required this.title, required this.cards, this.badge, this.badgeColor});
+}
+
+/// Šachovnice znalostí: celé učení najednou jako barevné čtverečky, blok
+/// po bloku jako na hlavní stránce. Jen se dívá, pokrok nemění
+/// (getCardProgress z HomeScreen u nové karty jen založí výchozí záznam,
+/// stejně jako procenta na hlavní stránce).
+class SachovniceScreen extends StatelessWidget {
+  final List<SachovniceBlok> bloky;
+  final CardProgress Function(FlashCard) getCardProgress;
+  const SachovniceScreen({super.key, required this.bloky, required this.getCardProgress});
+
+  void _detail(BuildContext context, FlashCard card, String blok) {
+    final prog = getCardProgress(card);
+    final stupen = stupenKarty(prog);
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: const Color(0xFF16213E),
+        title: Text(card.en, style: const TextStyle(fontSize: 16)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(card.cz, style: const TextStyle(color: Color(0xFF00D9FF))),
+            if (card.note != null) ...[
+              const SizedBox(height: 12),
+              Text(card.note!,
+                  style: TextStyle(color: Colors.grey[300], fontSize: 13, height: 1.3)),
+            ],
+            const SizedBox(height: 16),
+            Text(blok, style: TextStyle(color: Colors.grey[400], fontSize: 12)),
+            Text('${stupneNazvy[stupen]} · opakování ${prog.repetitions}x · interval ${prog.interval} dní',
+                style: TextStyle(color: stupneBarvy[stupen], fontSize: 12)),
+            Text('Další: ${prog.nextReview}',
+                style: TextStyle(color: Colors.grey[400], fontSize: 12)),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Zavřít'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _hlavicka(SachovniceBlok b) {
+    final naucene = b.cards.where((c) => stupenKarty(getCardProgress(c)) == 4).length;
+    final procent = b.cards.isEmpty ? 0 : (naucene * 100 / b.cards.length).round();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
+      child: Row(
+        children: [
+          if (b.badge != null) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: (b.badgeColor ?? Colors.grey).withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(b.badge!,
+                  style: TextStyle(
+                      color: b.badgeColor, fontWeight: FontWeight.bold, fontSize: 13)),
+            ),
+            const SizedBox(width: 8),
+          ],
+          // Počty pod názvem, ne vedle: vedle se na telefonu nevešly.
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(b.title,
+                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                Text('${b.cards.length} kartiček · $procent % naučeno',
+                    style: TextStyle(color: Colors.grey[400], fontSize: 12)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pocty = List.filled(stupneBarvy.length, 0);
+    for (final b in bloky) {
+      for (final c in b.cards) {
+        pocty[stupenKarty(getCardProgress(c))]++;
+      }
+    }
+    return Scaffold(
+      backgroundColor: const Color(0xFF1A1A2E),
+      appBar: AppBar(
+        title: const Text('Šachovnice znalostí'),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+      ),
+      body: CustomScrollView(
+        slivers: [
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+              child: legendaZnalosti(pocty),
+            ),
+          ),
+          for (final b in bloky) ...[
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              sliver: SliverToBoxAdapter(child: _hlavicka(b)),
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              sliver: SliverGrid(
+                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent: 26,
+                  crossAxisSpacing: 3,
+                  mainAxisSpacing: 3,
+                ),
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) {
+                    final card = b.cards[index];
+                    final popis = b.badge != null ? '${b.badge} ${b.title}' : b.title;
+                    return Tooltip(
+                      message: '${card.en}\n${card.cz}',
+                      waitDuration: const Duration(milliseconds: 300),
+                      child: GestureDetector(
+                        onTap: () => _detail(context, card, popis),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: stupneBarvy[stupenKarty(getCardProgress(card))],
+                            borderRadius: BorderRadius.circular(3),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                  childCount: b.cards.length,
+                ),
+              ),
+            ),
+          ],
+          SliverToBoxAdapter(
+            child: SizedBox(height: 16 + MediaQuery.of(context).padding.bottom),
           ),
         ],
       ),
