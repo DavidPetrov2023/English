@@ -181,6 +181,127 @@ class StudyTime {
   }
 }
 
+/// Text pro hlas bez gramatické poznámky v závorce: „beneiden (4.p.)" →
+/// „beneiden".
+///
+/// Poznámka je ke čtení, ne k vyslovení. Hlas prohlížeče u ní jednou
+/// přeskočil do polštiny („cztery kropka pe", 5. 10. 2026). Poznámka má
+/// číslici nebo tečku; „(sich)" zůstane, patří ke slovu. Stejné pravidlo
+/// má server v api/tts.php, tady je kvůli hlasu zařízení (bez přihlášení,
+/// offline, APK).
+String bezPoznamek(String t) {
+  final s = t.replaceAll(RegExp(r'\s*\([^()]*[\d.][^()]*\)'), '').trim();
+  return s.isEmpty ? t : s;
+}
+
+/// Anonymní souhrn používání pro Admin přehled (od 1.5.20, 6. 10. 2026).
+///
+/// Bez přihlášení server o aplikaci nevěděl nic: jede z dat v zařízení
+/// a sahá jen pro karty Davida Petrova. Každá instalace si proto vymyslí
+/// náhodné ID (žádné jméno, e-mail ani údaj z telefonu) a posílá k němu po
+/// dnech, kolik karet ohodnotila, kolik času se učilo a v jakých lekcích.
+/// Jméno zařízení dá až admin v přehledu.
+///
+/// Posílá se celých posledních [_dniOdeslat] dní, ne přírůstek: když se
+/// odeslání nepovede (offline), dožene to příští, a server bere vyšší
+/// hodnotu, takže dvojí odeslání nic nezdvojí (api/ping.php).
+class Aktivita {
+  static const String _klicZarizeni = 'zarizeni_id';
+  static const String _klicDny = 'aktivita_dny';
+  static const int _dniOdeslat = 14;
+  static const int _dniDrzet = 31;
+  static Timer? _odlozene;
+
+  /// ID přežije odhlášení: [_HomeScreenState._clearLocalAppState] maže jen
+  /// data jazyků. Nové ID dá až reinstalace nebo smazání dat prohlížeče.
+  static String idZarizeni(SharedPreferences prefs) {
+    var id = prefs.getString(_klicZarizeni) ?? '';
+    if (!RegExp(r'^[a-f0-9]{32}$').hasMatch(id)) {
+      final r = Random.secure();
+      id = List.generate(16, (_) => r.nextInt(256).toRadixString(16).padLeft(2, '0')).join();
+      prefs.setString(_klicZarizeni, id);
+    }
+    return id;
+  }
+
+  /// {"2026-10-06": {"de": {"karty": 12, "lekce": ["Lekce 10"]}}}
+  static Map<String, dynamic> _nacti(SharedPreferences prefs) {
+    try {
+      final m = json.decode(prefs.getString(_klicDny) ?? '{}');
+      return m is Map ? Map<String, dynamic>.from(m) : {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  /// Ohodnocená karta. Odeslání se odloží, ať se celá dávka pošle jednou.
+  static Future<void> karta(LanguageConfig lc, String lekce) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final dny = _nacti(prefs);
+      final dnes = StudyTime.klicDne(DateTime.now());
+      final den = Map<String, dynamic>.from((dny[dnes] as Map?) ?? {});
+      final j = Map<String, dynamic>.from((den[lc.code] as Map?) ?? {});
+      j['karty'] = ((j['karty'] as num?) ?? 0).toInt() + 1;
+      final seznam = ((j['lekce'] as List?) ?? []).map((e) => '$e').toList();
+      if (lekce.isNotEmpty && !seznam.contains(lekce) && seznam.length < 10) {
+        seznam.add(lekce);
+      }
+      j['lekce'] = seznam;
+      den[lc.code] = j;
+      dny[dnes] = den;
+      final klice = dny.keys.toList()..sort();
+      for (final stary in klice.take(max(0, klice.length - _dniDrzet))) {
+        dny.remove(stary);
+      }
+      await prefs.setString(_klicDny, json.encode(dny));
+    } catch (_) {
+      // Počítadlo pro admina nesmí shodit učení.
+    }
+    _odlozene?.cancel();
+    _odlozene = Timer(const Duration(seconds: 30), odesli);
+  }
+
+  /// Odeslat hned, čeká-li něco (aplikace jde na pozadí nebo se zavírá).
+  static void dozen() {
+    if (_odlozene?.isActive ?? false) odesli();
+  }
+
+  static Future<void> odesli() async {
+    _odlozene?.cancel();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final dny = _nacti(prefs);
+      final od = StudyTime.klicDne(
+          DateTime.now().subtract(const Duration(days: _dniOdeslat)));
+      final ven = <Map<String, dynamic>>[];
+      for (final lang in [AppLanguage.en, AppLanguage.de]) {
+        final lc = LanguageConfig(lang);
+        final cas = StudyTime.nactiZ(prefs, lc);
+        final klice = {...cas.keys, ...dny.keys}.where((d) => d.compareTo(od) > 0);
+        for (final d in klice) {
+          final j = ((dny[d] as Map?)?[lc.code] as Map?) ?? const {};
+          final karty = ((j['karty'] as num?) ?? 0).toInt();
+          final sekundy = cas[d] ?? 0;
+          if (karty == 0 && sekundy == 0) continue;
+          ven.add({
+            'den': d,
+            'jazyk': lc.code,
+            'karty': karty,
+            'sekundy': sekundy,
+            'lekce': (j['lekce'] as List?) ?? const [],
+          });
+        }
+      }
+      await AuthService.ping(
+          {'zarizeni': idZarizeni(prefs), 'dny': ven},
+          prefs.getString(AuthService.kTokenKey));
+    } catch (_) {
+      // Co se neodešle, dožene příští odeslání.
+    }
+  }
+}
+
 final GlobalKey<ScaffoldMessengerState> _appMessengerKey =
     GlobalKey<ScaffoldMessengerState>();
 
@@ -324,6 +445,8 @@ class _BackupStatusIconState extends State<BackupStatusIcon> {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await AuthService.zjistiVerziKlienta();
+  // Spuštění = známka života pro Admin přehled, i bez přihlášení.
+  unawaited(Aktivita.odesli());
   if (kIsWeb) {
     sw_update.startVersionPolling((newVersion) {
       _appMessengerKey.currentState?.showSnackBar(
@@ -2921,6 +3044,8 @@ class _LearningScreenState extends State<LearningScreen>
       _posledniAktivita = DateTime.now();
     } else {
       _zapocitejCas();
+      // Zavřená záložka ani zabitá aplikace na odložené odeslání nepočká.
+      Aktivita.dozen();
     }
   }
 
@@ -3316,7 +3441,7 @@ class _LearningScreenState extends State<LearningScreen>
 
   Future<void> _speak() async {
     if (currentCard == null) return;
-    final text = isEnToCz ? currentCard!.cz : currentCard!.en;
+    final text = bezPoznamek(isEnToCz ? currentCard!.cz : currentCard!.en);
     final locale = isEnToCz
         ? widget.langConfig.nativeTtsLocale
         : widget.langConfig.ttsLocale;
@@ -3376,6 +3501,7 @@ class _LearningScreenState extends State<LearningScreen>
     // Označit kartičku jako "viděnou v této relaci" - znovu se neukáže
     _sessionReviewed.add(key);
     todayReviewed++;
+    Aktivita.karta(widget.langConfig, widget.title);
 
     widget.onSaveProgress();
     _showNextCard();
@@ -4333,7 +4459,7 @@ class _CardsOverviewScreenState extends State<CardsOverviewScreen> {
           TextButton(
             onPressed: () async {
               await flutterTts.setLanguage(langConfig.ttsLocale);
-              await flutterTts.speak(card.en);
+              await flutterTts.speak(bezPoznamek(card.en));
             },
             child: const Text('🔊 Přehrát'),
           ),
@@ -4955,6 +5081,23 @@ class AuthService {
   static Future<ApiResult> getAdminUsers(String token) =>
       _request('GET', 'admin_users.php', token: token);
 
+  /// Souhrn používání, viz [Aktivita]. Token jen přiřadí zařízení k účtu;
+  /// neplatný server tiše přejde, takže tady 401 nikoho neodhlásí.
+  static Future<void> ping(Map<String, dynamic> body, String? token) async {
+    try {
+      await _request('POST', 'ping.php',
+              body: body, token: (token == null || token.isEmpty) ? null : token)
+          .timeout(const Duration(seconds: 6));
+    } catch (_) {
+      // Bez sítě nic; dožene se příště.
+    }
+  }
+
+  /// Admin: jméno zařízení v přehledu (prázdné jméno smaže).
+  static Future<ApiResult> nazevZarizeni(String token, String id, String nazev) =>
+      _request('POST', 'admin_zarizeni.php',
+          body: {'zarizeni': id, 'nazev': nazev}, token: token);
+
   /// Globální „David Petrov" karty ze serveru. Nikdy nevyhazuje — při
   /// chybě sítě vrací ApiResult(0, null), volající spadne na cache/asset.
   static Future<ApiResult> getDavidCards(String lang) async {
@@ -5572,6 +5715,10 @@ class _AdminScreenState extends State<AdminScreen> {
   int totalUsers = 0;
   int verifiedUsers = 0;
 
+  /// Zařízení i bez přihlášení (api/ping.php, od 1.5.20), naposledy viděná
+  /// nahoře.
+  List<Map<String, dynamic>> zarizeni = [];
+
   int _sortColumnIndex = 2; // last_login_at by default
   bool _sortAscending = false;
 
@@ -5599,10 +5746,14 @@ class _AdminScreenState extends State<AdminScreen> {
         final list = (data['users'] as List? ?? [])
             .map((u) => Map<String, dynamic>.from(u as Map))
             .toList();
+        final zar = (data['devices'] as List? ?? [])
+            .map((z) => Map<String, dynamic>.from(z as Map))
+            .toList();
         setState(() {
           users = list;
           totalUsers = (data['total_users'] as int?) ?? list.length;
           verifiedUsers = (data['verified_users'] as int?) ?? 0;
+          zarizeni = zar;
           isLoading = false;
         });
         _sortUsers();
@@ -5709,8 +5860,8 @@ class _AdminScreenState extends State<AdminScreen> {
   /// prave to je odpoved na "kdo jeste nema opravu, ktera uz je venku".
   ///
   /// Pomlcka znamena, ze se od zavedeni tohohle udaje (30. 8. 2026) jeste
-  /// neozval - ne ze appku nepouziva. Offline pouziti se ze serveru poznat
-  /// neda vubec.
+  /// neozval - ne ze appku nepouziva. Pouziti bez prihlaseni ukazuje az
+  /// tabulka zarizeni pod uctami (od 1.5.20).
   Widget _klient(Map<String, dynamic> u) {
     final platforma = (u['last_platform'] ?? '').toString();
     final verze = (u['last_app_version'] ?? '').toString();
@@ -5761,7 +5912,10 @@ class _AdminScreenState extends State<AdminScreen> {
                     child: Text(error!, textAlign: TextAlign.center),
                   ),
                 )
-              : Column(
+              // Jeden svislý posuv pro obě tabulky, každá má vlastní
+              // vodorovný: na telefonu se nevejdou na šířku.
+              : SingleChildScrollView(
+                  child: Column(
                   children: [
                     Padding(
                       padding: const EdgeInsets.all(16),
@@ -5770,13 +5924,14 @@ class _AdminScreenState extends State<AdminScreen> {
                           _summaryCard('Celkem', totalUsers.toString(), const Color(0xFF00D9FF)),
                           const SizedBox(width: 12),
                           _summaryCard('Ověřených', verifiedUsers.toString(), const Color(0xFF00FF88)),
+                          const SizedBox(width: 12),
+                          _summaryCard('Zařízení za 7 dní',
+                              _aktivnichZa7Dni().toString(), Colors.orange),
                         ],
                       ),
                     ),
-                    Expanded(
-                      child: SingleChildScrollView(
+                    SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
-                        child: SingleChildScrollView(
                           child: DataTable(
                             sortColumnIndex: _sortColumnIndex,
                             sortAscending: _sortAscending,
@@ -5835,12 +5990,133 @@ class _AdminScreenState extends State<AdminScreen> {
                               ]);
                             }).toList(),
                           ),
-                        ),
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(16, 32, 16, 4),
+                      child: Text(
+                        'Zařízení, i bez přihlášení',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                       ),
                     ),
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
+                      child: Text(
+                        'Náhodné ID instalace, jméno dáš klepnutím. '
+                        'Karty a čas za posledních 7 dní.',
+                        style: TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                    ),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: _zarizeniTabulka(),
+                    ),
+                    const SizedBox(height: 24),
                   ],
                 ),
+                ),
     );
+  }
+
+  int _aktivnichZa7Dni() => zarizeni.where((z) {
+        final dt = DateTime.tryParse('${z['last_seen'] ?? ''}');
+        return dt != null && DateTime.now().difference(dt).inDays < 7;
+      }).length;
+
+  Widget _zarizeniTabulka() {
+    if (zarizeni.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.all(16),
+        child: Text('Zatím se žádné zařízení neozvalo (aplikace od 1.5.20).',
+            style: TextStyle(color: Colors.grey)),
+      );
+    }
+    return DataTable(
+      columns: const [
+        DataColumn(label: Text('Zařízení')),
+        DataColumn(label: Text('Účet')),
+        DataColumn(label: Text('Klient')),
+        DataColumn(label: Text('Naposledy')),
+        DataColumn(label: Text('Dní'), numeric: true),
+        DataColumn(label: Text('Karty 7 d'), numeric: true),
+        DataColumn(label: Text('Čas 7 d'), numeric: true),
+        DataColumn(label: Text('Karty celkem'), numeric: true),
+        DataColumn(label: Text('Lekce naposledy')),
+      ],
+      rows: zarizeni.map((z) {
+        final id = '${z['id'] ?? ''}';
+        final nazev = '${z['nazev'] ?? ''}';
+        final email = '${z['email'] ?? ''}';
+        return DataRow(cells: [
+          DataCell(
+            Row(children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: _activityColor(z['last_seen'] as String?),
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                nazev.isNotEmpty ? nazev : id.substring(0, min(6, id.length)),
+                style: TextStyle(color: nazev.isNotEmpty ? null : Colors.grey),
+              ),
+              const SizedBox(width: 4),
+              const Icon(Icons.edit, size: 12, color: Colors.grey),
+            ]),
+            onTap: () => _pojmenuj(id, nazev),
+          ),
+          DataCell(Text(email.isNotEmpty ? email : 'bez přihlášení',
+              style: TextStyle(color: email.isNotEmpty ? null : Colors.grey))),
+          DataCell(_klient({
+            'last_platform': z['platform'],
+            'last_app_version': z['app_version'],
+          })),
+          DataCell(Text(_formatDate(z['last_seen'] as String?))),
+          DataCell(Text('${z['dny'] ?? 0}')),
+          DataCell(Text('${z['karty_7'] ?? 0}')),
+          DataCell(Text(StudyTime.popis((z['sekundy_7'] as int?) ?? 0))),
+          DataCell(Text('${z['karty_celkem'] ?? 0}')),
+          DataCell(Text('${z['lekce'] ?? '-'}')),
+        ]);
+      }).toList(),
+    );
+  }
+
+  Future<void> _pojmenuj(String id, String nazev) async {
+    final ctrl = TextEditingController(text: nazev);
+    final nove = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Jméno zařízení'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          maxLength: 60,
+          decoration: const InputDecoration(hintText: 'např. Kristýna'),
+          onSubmitted: (v) => Navigator.pop(ctx, v),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Zrušit')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text),
+              child: const Text('Uložit')),
+        ],
+      ),
+    );
+    if (nove == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString(AuthService.kTokenKey) ?? '';
+    final res = await AuthService.nazevZarizeni(token, id, nove.trim());
+    if (!mounted) return;
+    if (res.statusCode == 200) {
+      await _load();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Jméno se neuložilo (HTTP ${res.statusCode})')),
+      );
+    }
   }
 
   Widget _summaryCard(String label, String value, Color color) {

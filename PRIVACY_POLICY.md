@@ -1,6 +1,6 @@
 # LangCards — Zásady ochrany soukromí
 
-**Poslední aktualizace:** 19. července 2026
+**Poslední aktualizace:** 6. října 2026
 **Provozovatel:** David Petrov · **Kontakt:** davidpetrov@email.cz
 **Kanonická verze (URL pro Play Console):** https://petrovelektronika.cz/LangCards/privacy.html
 
@@ -9,8 +9,23 @@
 
 ## Používání bez účtu
 
-Aplikaci lze plně používat **bez registrace**. Všechna data (pokrok v učení, vlastní
-kartičky, nastavení) pak zůstávají **pouze lokálně v zařízení** a nikam se neodesílají.
+Aplikaci lze plně používat **bez registrace**. Pokrok v učení, vlastní kartičky
+a nastavení pak zůstávají **pouze lokálně v zařízení**. Na server provozovatele se
+odesílá jen anonymní souhrn používání, viz další oddíl.
+
+## Anonymní souhrn používání
+
+Od verze 1.5.20 si aplikace při prvním spuštění vytvoří **náhodné číslo instalace**.
+Není odvozené od zařízení, e-mailu ani jiného údaje. K němu aplikace odesílá na server
+provozovatele (petrovelektronika.cz):
+
+- platformu (web, Android) a verzi aplikace,
+- po dnech: počet ohodnocených kartiček, čas strávený učením a názvy procvičovaných lekcí.
+
+Účel: aby provozovatel viděl, jestli a jak se aplikace používá, i u lidí bez účtu.
+Údaje se nepředávají třetím stranám a nepoužívají k reklamě. U přihlášeného uživatele
+se souhrn přiřadí k jeho účtu. Nové číslo instalace vznikne po přeinstalování
+aplikace nebo smazání dat prohlížeče; o smazání souhrnu lze požádat e-mailem.
 
 ## Volitelný účet a záloha
 
@@ -49,13 +64,15 @@ nebo odinstalace.
 ## Co aplikace NEDĚLÁ
 
 - žádné reklamy
-- žádná analytika ani tracking
+- žádná analytika třetích stran ani sledování napříč aplikacemi a weby
+  (anonymní souhrn výše zůstává jen u provozovatele)
 - žádný sběr polohy, kontaktů, SMS
 - žádné AI zpracování dat
 
 ## Děti
 
-Vhodné pro všechny věkové kategorie. Bez účtu aplikace žádné osobní údaje nezpracovává.
+Vhodné pro všechny věkové kategorie. Bez účtu aplikace odesílá jen anonymní souhrn
+používání popsaný výše.
 
 ---
 
